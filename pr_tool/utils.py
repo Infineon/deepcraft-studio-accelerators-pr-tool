@@ -9,6 +9,8 @@ def group_files(root: str, files: str, max_size: int) -> Iterator[list[str]]:
     group = []
     group_size = 0
     for file in files.split('\\n'):
+        if not file:
+            continue
         file_path = Path(root, file)
         file_size = file_path.stat().st_size if file_path.exists() else 0
         if file_size > max_size:

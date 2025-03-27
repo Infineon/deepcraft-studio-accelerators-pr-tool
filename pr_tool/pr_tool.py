@@ -69,8 +69,18 @@ else:
     git(['pull', 'origin', branch_name])
     git(['stash', 'apply', f'stash^{{/{stash_name}}}'], check=False)
 commits_ahead = int(git(['rev-list', '--count', branch_ref, f'^refs/heads/{MAIN_BRANCH}'], stdout=PIPE))
+commit_verb = 'Add' if commits_ahead <= 0 else 'Modify'
 
 # Push project content to the user's remote (origin)
+
+# Handle deletions
+diff_names_deleted = git(['diff', '--name-only', '--diff-filter=D', '--relative', str(project_path)], stdout=PIPE)
+if diff_names_deleted:
+    with NamedTemporaryFile('w', delete=False) as pathspec:
+        pathspec.write(diff_names_deleted)
+        pathspec.close()
+        git(['rm', f'--pathspec-from-file={pathspec.name}'])
+        os.remove(pathspec.name)
 # Divide push to groups, each with a size less than 2GB
 git(['add', '--intent-to-add', project_name])
 diff_names = git(['diff', '--name-only', '--relative', str(project_path)], stdout=PIPE)
@@ -83,12 +93,15 @@ for index, group in enumerate(file_groups):
         pathspec.close()
         git(['add', f'--pathspec-from-file={pathspec.name}'])
         os.remove(pathspec.name)
-        commit_msg = 'Add' if commits_ahead <= 0 else 'Modify'
-        if index == 0 == number_of_chunks - 1:
-            commit_msg += ' files'
-        else:
-            commit_msg += f' chunk {index + 1} of {number_of_chunks}'
-        git(['commit', '-m', commit_msg])
+    if index == 0 == number_of_chunks - 1:
+        commit_msg = commit_verb + ' files'
+    else:
+        commit_msg = commit_verb + f' chunk {index + 1} of {number_of_chunks}'
+    git(['commit', '-m', commit_msg])
+    git(['push', '-u', 'origin', 'HEAD'])
+else:
+    if diff_names_deleted:
+        git(['commit', '-m', commit_verb + ' files'])
         git(['push', '-u', 'origin', 'HEAD'])
 
 # Create or reopen a pull request to Infineon and view it
