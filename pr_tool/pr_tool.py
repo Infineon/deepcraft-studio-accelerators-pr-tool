@@ -26,8 +26,7 @@ cli.ensure_git_version()
 git = cli.git
 gh = cli.gh
 gh(['config', 'set', 'prompt', 'disabled'])
-if gh(['auth', 'status'], check=False) != 0:
-    gh(['auth', 'login', '--hostname', 'github.com', '--web', '--git-protocol', 'https', '--scopes', 'workflow'])
+gh(['auth', 'login', '--hostname', 'github.com', '--web', '--git-protocol', 'https', '--scopes', 'workflow'])
 user = gh(['api', 'user', '--jq', '.login'])
 email = gh(['api', 'user', '--jq', '.email'])
 
