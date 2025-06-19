@@ -62,11 +62,12 @@ if git(['ls-remote', '--exit-code', '--quiet', 'origin', branch_ref], check=Fals
 else:
     # Remote branch exists
     git(['switch', branch_name])
-    # Pull updates first
-    stash_name = f'Update {branch_name}'
-    git(['stash', 'push', '--message', stash_name, '--', f'{project_name}/'])
-    git(['pull', 'origin', branch_name])
-    git(['stash', 'apply', f'stash^{{/{stash_name}}}'], check=False)
+    pull_required = int(git(['rev-list', '--count', f'origin/{branch_name}', f'^refs/heads/{branch_name}'], stdout=PIPE)) > 0
+    if pull_required:
+        stash_name = f'Update {branch_name}'
+        git(['stash', 'push', '--message', stash_name, '--', f'{project_name}/'])
+        git(['pull', 'origin', branch_name])
+        git(['stash', 'apply', f'stash^{{/{stash_name}}}'], check=False)
 commits_ahead = int(git(['rev-list', '--count', branch_ref, f'^refs/heads/{MAIN_BRANCH}'], stdout=PIPE))
 commit_verb = 'Add' if commits_ahead <= 0 else 'Modify'
 
