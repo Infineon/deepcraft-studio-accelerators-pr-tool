@@ -8,7 +8,7 @@ def group_files(root: str, files: str, max_size: int) -> Iterator[list[str]]:
     """Group files from the given path such that each group's total size is less than max_size."""
     group = []
     group_size = 0
-    for file in files.split('\\n'):
+    for file in files.splitlines():
         if not file:
             continue
         file_path = Path(root, file)

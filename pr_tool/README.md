@@ -5,7 +5,7 @@ Minimum requirement are:
 * git 2.43 (or git 2.16.2 that will self-update itself to the latest)
 * GitHub account
 
-The tool will authenticate using your GitHub account, fork https://github.com/Infineon/deepcraft-starter-models to your account, and prepare the pull request.
+The tool will authenticate using your GitHub account, fork https://github.com/Infineon/deepcraft-studio-accelerators to your account, and prepare the pull request.
 Once ready, it will open the pull request in your browser.
 It can also be used to update the pull request.
 
