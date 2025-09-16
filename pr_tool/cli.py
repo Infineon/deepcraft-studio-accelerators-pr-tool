@@ -1,3 +1,4 @@
+from pathlib import Path
 from subprocess import CompletedProcess, run, PIPE
 
 from constants import *
@@ -28,7 +29,7 @@ class Cli:
             return result
 
     def git(self, args: list, *popenargs, **kwargs) -> CliResult:
-        return self.run(['git', f'--git-dir={GIT_DIR}\\{self.project_name}'] + args, *popenargs, **kwargs)
+        return self.run(['git', f'--git-dir={Path(GIT_DIR, self.project_name)}'] + args, *popenargs, **kwargs)
 
 
     def gh(self, args: list, *popenargs, **kwargs) -> CliResult:
