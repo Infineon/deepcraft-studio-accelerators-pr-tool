@@ -49,6 +49,7 @@ if git(['remote', 'get-url', 'origin'], check=False, stdout=PIPE) != origin_url:
 gh(['repo', 'sync', f'{user}/{REPO_NAME}', '--force', '--branch', MAIN_BRANCH])
 # Ignore everything (including files in root) but the project
 git(['sparse-checkout', 'set', '--no-cone', '!/*', f'/{project_name}/'])
+git(['gc'])
 
 branch_ref = f'refs/heads/{branch_name}'
 if git(['ls-remote', '--exit-code', '--quiet', 'origin', branch_ref], check=False) == 2:
