@@ -87,23 +87,23 @@ git(['add', '--intent-to-add', project_name])
 diff_names = git(['diff', '--name-only', '--relative', str(project_path)], stdout=PIPE)
 gh_push_limit = (2 * 1024 * 1024 * 1024)  # 2 GB
 file_groups = list(group_files(git_path, diff_names, gh_push_limit - 1)) if diff_names else []
-number_of_chunks = len(file_groups)
-for index, group in enumerate(file_groups):
-    with NamedTemporaryFile('w', delete=False) as pathspec:
-        pathspec.write('\n'.join(group))
-        pathspec.close()
-        git(['add', f'--pathspec-from-file={pathspec.name}'])
-        os.remove(pathspec.name)
-    if index == 0 == number_of_chunks - 1:
-        commit_msg = commit_verb + ' files'
-    else:
-        commit_msg = commit_verb + f' chunk {index + 1} of {number_of_chunks}'
-    git(['commit', '-m', commit_msg])
-    git(['push', '-u', 'origin', 'HEAD'])
-else:
-    if diff_names_deleted:
-        git(['commit', '-m', commit_verb + ' files'])
+if file_groups:
+    number_of_chunks = len(file_groups)
+    for index, group in enumerate(file_groups):
+        with NamedTemporaryFile('w', delete=False) as pathspec:
+            pathspec.write('\n'.join(group))
+            pathspec.close()
+            git(['add', f'--pathspec-from-file={pathspec.name}'])
+            os.remove(pathspec.name)
+        if index == 0 == number_of_chunks - 1:
+            commit_msg = commit_verb + ' files'
+        else:
+            commit_msg = commit_verb + f' chunk {index + 1} of {number_of_chunks}'
+        git(['commit', '-m', commit_msg])
         git(['push', '-u', 'origin', 'HEAD'])
+elif diff_names_deleted:
+    git(['commit', '-m', 'Delete files'])
+    git(['push', '-u', 'origin', 'HEAD'])
 
 # Create or reopen a pull request to Infineon and view it
 head_branch = f'{user}:{branch_name}'
