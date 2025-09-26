@@ -109,6 +109,6 @@ else:
 head_branch = f'{user}:{branch_name}'
 pr_state = gh(['pr', 'view', head_branch, '--json', 'state', '--jq', '.state'], check=False)
 if not pr_state or pr_state == 'CLOSED':
-    gh(['pr', 'create', '--base', 'main', '--head', head_branch, '--web', '--title', f'Starter Model {project_name}'])
+    gh(['pr', 'create', '--base', 'main', '--head', head_branch, '--web', '--title', f'Accelerator {project_name}'])
 else:
     gh(['pr', 'view', head_branch, '--web'], check=False)
