@@ -1,5 +1,6 @@
 import json
 import os
+import shutil
 import sys
 import time
 from subprocess import PIPE
@@ -34,10 +35,21 @@ email = gh(['api', 'user', '--jq', '.email'])
 cli.cwd = git_path = project_path.parent
 git_dir = git_path / GIT_DIR / project_name
 origin_url = f'{HOST}/{user}/{REPO_NAME}.git'
-if git(['remote', 'get-url', 'origin'], check=False, stdout=PIPE) != origin_url:
+
+
+def onerror(func, path, exc_info):
+    import stat
+    if not os.access(path, os.W_OK):
+        os.chmod(path, stat.S_IWUSR)
+        func(path)
+    else:
+        raise
+
+def fork():
     gh(['repo', 'fork', BASE_REPO, '--default-branch-only'])
     time.sleep(2)  # Wait for repo to be created
     git_dir.parent.mkdir(exist_ok=True)
+    shutil.rmtree(git_dir, onerror=onerror)
     with TemporaryDirectory() as tmpdir:
         # Clone repo empty
         git(['clone', '--no-checkout', '--filter=blob:none', '--depth', '1', '--no-single-branch', '--sparse',
@@ -46,7 +58,15 @@ if git(['remote', 'get-url', 'origin'], check=False, stdout=PIPE) != origin_url:
     git(['config', 'advice.updateSparsePath', 'false'])
     git(['config', 'core.safecrlf', 'false'])
     git(['config', 'user.email', email])
-gh(['repo', 'sync', f'{user}/{REPO_NAME}', '--force', '--branch', MAIN_BRANCH])
+
+
+if git(['remote', 'get-url', 'origin'], check=False, stdout=PIPE) != origin_url:
+    fork()
+if gh(['repo', 'sync', f'{user}/{REPO_NAME}', '--force', '--branch', MAIN_BRANCH], check=False) == 1:
+    print('Your fork is out of sync with the source repository. Authenticate again to allow deleting the forked repo, so a new one can be created.')
+    gh(['auth', 'refresh', '--hostname', 'github.com', '-s', 'workflow,delete_repo'])
+    gh(['repo', 'delete', f'{user}/{REPO_NAME}', '--yes'])
+    fork()
 # Ignore everything (including files in root) but the project
 git(['sparse-checkout', 'set', '--no-cone', '!/*', f'/{project_name}/'])
 git(['gc'])
