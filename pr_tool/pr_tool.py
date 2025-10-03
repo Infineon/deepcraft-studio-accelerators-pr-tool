@@ -49,7 +49,8 @@ def fork():
     gh(['repo', 'fork', BASE_REPO, '--default-branch-only'])
     time.sleep(2)  # Wait for repo to be created
     git_dir.parent.mkdir(exist_ok=True)
-    shutil.rmtree(git_dir, onerror=onerror)
+    if git_dir.exists():
+        shutil.rmtree(git_dir, onerror=onerror)
     with TemporaryDirectory() as tmpdir:
         # Clone repo empty
         git(['clone', '--no-checkout', '--filter=blob:none', '--depth', '1', '--no-single-branch', '--sparse',
@@ -58,6 +59,7 @@ def fork():
     git(['config', 'advice.updateSparsePath', 'false'])
     git(['config', 'core.safecrlf', 'false'])
     git(['config', 'user.email', email])
+    git(['config', 'gc.auto', '0'])
 
 
 if git(['remote', 'get-url', 'origin'], check=False, stdout=PIPE) != origin_url:
@@ -69,7 +71,6 @@ if gh(['repo', 'sync', f'{user}/{REPO_NAME}', '--force', '--branch', MAIN_BRANCH
     fork()
 # Ignore everything (including files in root) but the project
 git(['sparse-checkout', 'set', '--no-cone', '!/*', f'/{project_name}/'])
-git(['gc'])
 
 branch_ref = f'refs/heads/{branch_name}'
 if git(['ls-remote', '--exit-code', '--quiet', 'origin', branch_ref], check=False) == 2:
@@ -119,7 +120,7 @@ if file_groups:
             commit_msg = commit_verb + ' files'
         else:
             commit_msg = commit_verb + f' chunk {index + 1} of {number_of_chunks}'
-        git(['commit', '-m', commit_msg])
+        git(['commit', '--no-verify', '-m', commit_msg])
         git(['push', '-u', 'origin', 'HEAD'])
 elif diff_names_deleted:
     git(['commit', '-m', 'Delete files'])
