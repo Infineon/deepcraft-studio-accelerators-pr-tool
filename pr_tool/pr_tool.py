@@ -97,7 +97,8 @@ commit_verb = 'Add' if commits_ahead <= 0 else 'Modify'
 # Push project content to the user's remote (origin)
 
 # Handle deletions
-diff_names_deleted = git(['diff', '--name-only', '--diff-filter=D', '--relative', str(project_path)], stdout=PIPE)
+ignore_paths = [f':^{project_path / dir}' for dir in GIT_IGNORED_DIRS]
+diff_names_deleted = git(['diff', '--name-only', '--diff-filter=D', '--relative', '--', str(project_path), *ignore_paths], stdout=PIPE)
 if diff_names_deleted:
     with NamedTemporaryFile('w', delete=False) as pathspec:
         pathspec.write(diff_names_deleted)
@@ -105,8 +106,8 @@ if diff_names_deleted:
         git(['rm', f'--pathspec-from-file={pathspec.name}'])
         os.remove(pathspec.name)
 # Divide push to groups, each with a size less than 2GB
-git(['add', '--intent-to-add', project_name])
-diff_names = git(['diff', '--name-only', '--relative', str(project_path)], stdout=PIPE)
+git(['add', '--intent-to-add', '--', project_name, *ignore_paths])
+diff_names = git(['diff', '--name-only', '--relative', '--', str(project_path), *ignore_paths], stdout=PIPE)
 gh_push_limit = (2 * 1024 * 1024 * 1024)  # 2 GB
 file_groups = list(group_files(git_path, diff_names, gh_push_limit - 1)) if diff_names else []
 if file_groups:
