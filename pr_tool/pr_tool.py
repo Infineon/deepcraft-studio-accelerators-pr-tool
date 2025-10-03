@@ -27,7 +27,9 @@ cli.ensure_git_version()
 git = cli.git
 gh = cli.gh
 gh(['config', 'set', 'prompt', 'disabled'])
-gh(['auth', 'login', '--hostname', 'github.com', '--web', '--git-protocol', 'https', '--scopes', 'workflow'])
+auth_status = json.loads(gh(['auth', 'status', '--hostname', 'github.com', '--json', 'hosts', '--jq', '.hosts | add']))
+if auth_status[0]['state'] != 'success' or 'workflow' not in auth_status[0]['scopes']:
+    gh(['auth', 'login', '--hostname', 'github.com', '--web', '--git-protocol', 'https', '--scopes', 'workflow'])
 user = gh(['api', 'user', '--jq', '.login'])
 email = gh(['api', 'user', '--jq', '.email'])
 
@@ -60,11 +62,13 @@ def fork():
     git(['config', 'core.safecrlf', 'false'])
     git(['config', 'user.email', email])
     git(['config', 'gc.auto', '0'])
+    git(['config', 'maintenance.auto', 'false'])
+    git(['config', 'maintenance.gc.enabled', 'false'])
 
 
 if git(['remote', 'get-url', 'origin'], check=False, stdout=PIPE) != origin_url:
     fork()
-if gh(['repo', 'sync', f'{user}/{REPO_NAME}', '--force', '--branch', MAIN_BRANCH], check=False) == 1:
+if gh(['repo', 'sync', f'{user}/{REPO_NAME}', '--force', '--branch', MAIN_BRANCH], check=False) != 0:
     print('Your fork is out of sync with the source repository. Authenticate again to allow deleting the forked repo, so a new one can be created.')
     gh(['auth', 'refresh', '--hostname', 'github.com', '-s', 'workflow,delete_repo'])
     gh(['repo', 'delete', f'{user}/{REPO_NAME}', '--yes'])
