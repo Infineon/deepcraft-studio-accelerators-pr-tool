@@ -55,10 +55,9 @@ def fork():
         shutil.rmtree(git_dir, onerror=onerror)
     with TemporaryDirectory() as tmpdir:
         # Clone repo empty
-        git(['clone', '--no-checkout', '--depth', '1', '--no-single-branch', '--sparse',
-             f'--separate-git-dir={git_dir}', origin_url, tmpdir])
+        git(['clone', '--no-checkout', '--depth', '1', '--no-single-branch', f'--separate-git-dir={git_dir}',
+             origin_url, tmpdir])
     git(['remote', 'add', '-t', MAIN_BRANCH, 'upstream', BASE_REPO_URL])
-    git(['config', 'advice.updateSparsePath', 'false'])
     git(['config', 'core.safecrlf', 'false'])
     git(['config', 'user.email', email])
     git(['config', 'gc.auto', '0'])
@@ -73,8 +72,6 @@ if gh(['repo', 'sync', f'{user}/{REPO_NAME}', '--force', '--branch', MAIN_BRANCH
     gh(['auth', 'refresh', '--hostname', 'github.com', '-s', 'workflow,delete_repo'])
     gh(['repo', 'delete', f'{user}/{REPO_NAME}', '--yes'])
     fork()
-# Ignore everything but the project
-git(['sparse-checkout', 'set', project_name])
 
 branch_ref = f'refs/heads/{branch_name}'
 if git(['ls-remote', '--exit-code', '--quiet', 'origin', branch_ref], check=False) == 2:
