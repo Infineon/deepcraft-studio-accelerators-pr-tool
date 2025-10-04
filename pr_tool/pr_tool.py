@@ -73,8 +73,8 @@ if gh(['repo', 'sync', f'{user}/{REPO_NAME}', '--force', '--branch', MAIN_BRANCH
     gh(['auth', 'refresh', '--hostname', 'github.com', '-s', 'workflow,delete_repo'])
     gh(['repo', 'delete', f'{user}/{REPO_NAME}', '--yes'])
     fork()
-# Ignore everything but the project
-git(['sparse-checkout', 'set', project_name])
+# Do not change anything but the project
+git(['sparse-checkout', 'set', '--no-cone', '!/*', f'/{project_name}/'])
 
 branch_ref = f'refs/heads/{branch_name}'
 if git(['ls-remote', '--exit-code', '--quiet', 'origin', branch_ref], check=False) == 2:
