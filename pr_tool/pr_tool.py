@@ -55,8 +55,8 @@ def fork():
         shutil.rmtree(git_dir, onerror=onerror)
     with TemporaryDirectory() as tmpdir:
         # Clone repo empty
-        git(['clone', '--no-checkout', '--depth', '1', '--no-single-branch', '--sparse',
-             f'--separate-git-dir={git_dir}', origin_url, tmpdir])
+        git(['clone', '--no-checkout', '--depth', '1', '--no-single-branch', f'--separate-git-dir={git_dir}',
+             origin_url, tmpdir])
     git(['remote', 'add', '-t', MAIN_BRANCH, 'upstream', BASE_REPO_URL])
     git(['config', 'advice.updateSparsePath', 'false'])
     git(['config', 'core.safecrlf', 'false'])
