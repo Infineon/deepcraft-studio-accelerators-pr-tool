@@ -36,7 +36,7 @@ if args.metadata:
 validate_project_structure(project_name, project_path)
 
 # Setup git and gh cli
-cli = Cli(project_name)
+cli = Cli()
 cli.ensure_git_version()
 git = cli.git
 gh = cli.gh
@@ -56,46 +56,41 @@ elif gh(['repo', 'sync', f'{user}/{REPO_NAME}', '--force', '--branch', MAIN_BRAN
     gh(['repo', 'delete', f'{user}/{REPO_NAME}', '--yes'])
     fork()
 
-# Initialize local git
-cli.cwd = git_path = project_path.parent
-git_dir = git_path / GIT_DIR / project_name
-git_dir.parent.mkdir(exist_ok=True)
+cli.git_dir = git_dir = project_path.parent / GIT_DIR / project_name
 if git_dir.exists():
     shutil.rmtree(git_dir, onerror=onerror)
-with TemporaryDirectory() as tmpdir:
-    # Initialize repo empty and shallow; --no-single-branch is required to allow this copy to fetch other branches later
-    git(['clone', '--no-checkout', '--depth', '1', '--no-single-branch', f'--separate-git-dir={git_dir}',
-         f'{HOST}/{user}/{REPO_NAME}.git', tmpdir])
-git(['remote', 'add', '-t', MAIN_BRANCH, 'upstream', BASE_REPO_URL])
-git(['config', 'advice.updateSparsePath', 'false'])
-git(['config', 'core.safecrlf', 'false'])
-git(['config', 'user.email', email])
-git(['config', 'gc.auto', '0'])
-git(['config', 'maintenance.auto', 'false'])
+else:
+    git_dir.parent.mkdir(exist_ok=True)
+try:  # Always remove git_dir after this block
+    # Initialize local git
+    with TemporaryDirectory() as tmpdir:
+        cli.cwd = tmpdir
+        # Clone repo empty and shallow; --no-single-branch is required to allow this copy to fetch other branches later
+        git(['clone', '--no-checkout', '--depth', '1', '--no-single-branch', f'--separate-git-dir={git_dir}',
+             f'{HOST}/{user}/{REPO_NAME}.git', tmpdir])
+        git(['remote', 'add', '-t', MAIN_BRANCH, 'upstream', BASE_REPO_URL])
+        git(['config', 'advice.updateSparsePath', 'false'])
+        git(['config', 'core.safecrlf', 'false'])
+        git(['config', 'user.email', email])
+        git(['config', 'gc.auto', '0'])
+        git(['config', 'maintenance.auto', 'false'])
 
-# Prevent git from processing tracked files that are outside the project
-git(['sparse-checkout', 'set', '--no-cone', '!/*', f'/{project_name}/'])
+        # Prevent git from processing tracked files that are outside the project
+        git(['sparse-checkout', 'set', '--no-cone', '!/*', f'/{project_name}/'])
 
-try:
-    # Switch to the project branch, and pull if required
-    branch_ref = f'refs/heads/{branch_name}'
-    if git(['ls-remote', '--exit-code', '--quiet', 'origin', branch_ref], check=False) == 2:
-        # Remote branch does not exist
-        git(['switch', '-c', branch_name, MAIN_BRANCH])
-    else:
-        # Remote branch exists
-        git(['switch', branch_name])
-        pull_required = int(git(['rev-list', '--count', f'origin/{branch_name}', f'^{branch_ref}'], stdout=PIPE)) > 0
-        if pull_required:
-            stash_name = f'Update {branch_name}'
-            git(['stash', 'push', '--message', stash_name, '--', f'{project_name}/'])
-            git(['pull', 'origin', branch_name])
-            git(['stash', 'apply', f'stash^{{/{stash_name}}}'], check=False)
-    commits_ahead = int(git(['rev-list', '--count', branch_ref, f'^refs/heads/{MAIN_BRANCH}'], stdout=PIPE))
-    commit_verb = 'Add' if commits_ahead <= 0 else 'Modify'
+        # Switch to the project branch
+        branch_ref = f'refs/heads/{branch_name}'
+        if git(['ls-remote', '--exit-code', '--quiet', 'origin', branch_ref], check=False) == 2:
+            # Remote branch does not exist
+            git(['switch', '-c', branch_name, MAIN_BRANCH])
+        else:
+            # Remote branch exists
+            git(['switch', branch_name])
+        commits_ahead = int(git(['rev-list', '--count', branch_ref, f'^refs/heads/{MAIN_BRANCH}'], stdout=PIPE))
+        commit_verb = 'Add' if commits_ahead <= 0 else 'Modify'
 
     # Push project content to the user's remote (origin)
-
+    cli.cwd = repo_root = project_path.parent
     # Handle deletions
     ignore_paths = [f':^{project_path / dir}' for dir in GIT_IGNORED_DIRS]
     diff_names_deleted = git(['diff', '--name-only', '--diff-filter=D', '--relative', '--', str(project_path), *ignore_paths], stdout=PIPE)
@@ -109,7 +104,7 @@ try:
     git(['add', '--intent-to-add', '--', project_name, *ignore_paths])
     diff_names = git(['diff', '--name-only', '--relative', '--', str(project_path), *ignore_paths], stdout=PIPE)
     gh_push_limit = (2 * 1024 * 1024 * 1024)  # 2 GB
-    file_groups = list(group_files(git_path, diff_names, gh_push_limit - 1)) if diff_names else []
+    file_groups = list(group_files(repo_root, diff_names, gh_push_limit - 1)) if diff_names else []
     if file_groups:
         number_of_chunks = len(file_groups)
         for index, group in enumerate(file_groups):

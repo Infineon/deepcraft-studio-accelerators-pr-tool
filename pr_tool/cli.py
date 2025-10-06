@@ -1,4 +1,3 @@
-from pathlib import Path
 from subprocess import CompletedProcess, run, PIPE
 
 from constants import *
@@ -11,9 +10,9 @@ MINIMUM_GIT_VERSION = '2.43'  # git show-ref --exists
 
 
 class Cli:
-    def __init__(self, project_name: str):
+    def __init__(self):
         self.cwd = None
-        self.project_name = project_name
+        self.git_dir = None
 
     def run(self, args: list, *popenargs, cwd=None, check=True, stdout=None, **kwargs) -> CliResult:
         print(' '.join(args))
@@ -29,7 +28,7 @@ class Cli:
             return result
 
     def git(self, args: list, *popenargs, **kwargs) -> CliResult:
-        return self.run(['git', f'--git-dir={Path(GIT_DIR, self.project_name)}'] + args, *popenargs, **kwargs)
+        return self.run(['git', f'--git-dir={self.git_dir}'] + args, *popenargs, **kwargs)
 
 
     def gh(self, args: list, *popenargs, **kwargs) -> CliResult:
