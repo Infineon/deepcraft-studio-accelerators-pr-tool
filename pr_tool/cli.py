@@ -18,7 +18,7 @@ class Cli:
         print(' '.join(args))
         result = run(args, *popenargs, cwd=cwd or self.cwd, check=check, stdout=stdout, **kwargs)
         if stdout == PIPE:
-            output = result.stdout.decode().strip()
+            output = result.stdout.decode().strip() or str(result.returncode)
             print('-> ' + output[:512])
             return output
         elif not check:
