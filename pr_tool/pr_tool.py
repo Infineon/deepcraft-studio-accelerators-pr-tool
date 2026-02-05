@@ -47,8 +47,8 @@ if auth_status[0]['state'] != 'success' or 'workflow' not in auth_status[0]['sco
 user = gh(['api', 'user', '--jq', '.login'])
 email = gh(['api', 'user', '--jq', '.email'])
 
-# Ensure fork exists and is in sync with the source repo
-if gh(['repo', 'view', f'{user}/{REPO_NAME}', '--json', 'isFork', '--jq', '.isFork']) == 'false':
+# Ensure fork exists and is in-sync with the source repo
+if gh(['repo', 'view', f'{user}/{REPO_NAME}', '--json', 'name'], check=False) != 0:
     fork()
 elif gh(['repo', 'sync', f'{user}/{REPO_NAME}', '--force', '--branch', MAIN_BRANCH], check=False) != 0:
     print('Your fork is out of sync with the source repository. Authenticate again to allow deleting the forked repo, so a new one can be created.')
