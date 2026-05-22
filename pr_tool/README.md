@@ -75,12 +75,29 @@ The first time you run the tool you will be:
 
 1. Prompted to authenticate with GitHub in your browser (only once &ndash;
    credentials are then cached by `gh`).
-2. Asked for project metadata (title, description, algorithm, sensor) unless
-   a `metadata.json` already exists in the project, or you pass these as CLI
-   flags.
+2. Asked for project metadata (title, description, algorithm, sensors)
+   unless a `metadata.json` already exists in the project, or you pass these
+   as CLI flags.
 
 When the push completes, your default browser opens the pull request page on
 `Infineon/deepcraft-studio-accelerators` so you can review and submit it.
+
+### Interactive metadata prompts
+
+When the tool needs metadata it does not have, it asks you for it on the
+command line. The prompts behave as follows:
+
+* **Title and description** &ndash; free-form text with a maximum length.
+  Empty input is rejected and the prompt repeats until you provide a value
+  that fits within the limit.
+* **Algorithm** &ndash; pick exactly one option by typing its number from
+  the displayed list, or type a custom name. If you type something that is
+  not in the suggested list, the tool asks you to confirm before using it.
+* **Sensors** &ndash; pick one or more options by typing a comma-separated
+  list of numbers and/or names (for example `1, 3, MyCustomSensor`). Each
+  custom name is confirmed individually, and duplicates are removed
+  automatically. At least one sensor must be selected.
+
 
 ### Updating an existing pull request
 
@@ -160,8 +177,8 @@ maintain pull requests for several projects in parallel without conflicts.
 | `--name <CamelCaseName>` | Override the project name (defaults to the directory name). Also becomes the branch name on GitHub. |
 | `--title <text>` | Project title (max 40 characters). |
 | `--description <text>` | Short project description (max 100 characters). |
-| `--algorithm <Classification\|Regression>` | Supervised learning algorithm. Default: `Classification`. |
-| `--sensor <name>` | Target sensor. Run `--help` to see the full list. Default: `Other`. |
+| `--algorithm <name>` | Supervised learning algorithm. Suggested values: `Classification`, `Regression`, `Object Detection`. |
+| `--sensor <name>` | Target sensor. Run `--help` to see the suggested list. Can be passed multiple times (e.g. `--sensor Microphone --sensor Camera`) to specify more than one sensor. |
 | `--override-metadata` | Regenerate `metadata.json` from the options above even if one already exists. |
 
 For the complete list of options, run:
@@ -172,6 +189,8 @@ python ./pr_tool.py --help
 
 ### Example
 
+Single sensor:
+
 ```bash
 python ./pr_tool.py \
   --path C:\Projects\MyAudioClassifier \
@@ -179,6 +198,18 @@ python ./pr_tool.py \
   --description "Detects three types of household sounds" \
   --algorithm Classification \
   --sensor Microphone
+```
+
+Multiple sensors (repeat `--sensor`):
+
+```bash
+python ./pr_tool.py \
+  --path C:\Projects\MyMultiModalDetector \
+  --title "Multi-modal detector" \
+  --description "Combines audio and motion signals" \
+  --algorithm Classification \
+  --sensor Microphone \
+  --sensor IMU
 ```
 
 ## Troubleshooting

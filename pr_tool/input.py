@@ -6,15 +6,16 @@ from typing import Callable
 
 TITLE_MAX_LENGTH = 40
 DESCRIPTION_MAX_LENGTH = 100
-ALGORITHM = ['Classification', 'Regression']
+ALGORITHM = ['Classification', 'Regression', 'Object Detection']
 SENSORS = [
-    'Microphone', 'IVS-Infineon Vibration Sensor',
+    'Microphone',
     'Camera',
     'Radar',
     'Capacitive Sensing', 'Inductive Sensing',
     'Current', 'Voltage', 'Power',
     'Torque', 'RPM',
     'IMU', 'Vibration',
+    'DPS',
     'Other',
 ]
 
@@ -22,7 +23,7 @@ SENSORS = [
 def arg_validator(max_len: int) -> Callable[[str], str]:
     def validate_arg(value: str) -> str:
         if not value:
-            raise ArgumentTypeError(f'Value is empty')
+            raise ArgumentTypeError('Value is empty')
         if len(value) > max_len:
             raise ArgumentTypeError(f'Value is more than {max_len} characters')
         return value
@@ -31,30 +32,103 @@ def arg_validator(max_len: int) -> Callable[[str], str]:
 
 
 def input_str(name: str, max_len: int) -> str:
-    value = input(f'{name} (max {max_len} characters): ')
-    return arg_validator(max_len)(value)
-
-
-def input_choice(name: str, choices: list[str], default_idx: int = 0) -> str:
-    choices_sub_list = '\n'.join([f'{i + 1}. {choice} {"(default)" if default_idx == i else ""}' for i, choice in enumerate(choices)])
-    range_str = f'between 1 to {len(choices)}'
-    prompt = f'{name} - type {range_str} or enter a new name\n{choices_sub_list}\n: '
+    prompt = f'{name} (max {max_len} characters): '
     while True:
-        choice = input(prompt)
-        if not choice:
-            return choices[default_idx]
-        if choice.isnumeric():
-            if int(choice) <= 0 or int(choice) > len(choices):
-                print(f'Number {choice} is not {range_str}')
+        value = input(prompt).strip()
+        if not value:
+            print('Value cannot be empty, please try again.')
+            continue
+        if len(value) > max_len:
+            print(f'Value is more than {max_len} characters, please try again.')
+            continue
+        return value
+
+
+def confirm_new_value(value: str, kind: str) -> bool:
+    """Ask the user to confirm using a value that is not in the suggested list."""
+    while True:
+        answer = input(
+            f'"{value}" is not in the suggested {kind} list. Use it anyway? (y/n): '
+        ).strip().lower()
+        if answer in ('y', 'yes'):
+            return True
+        if answer in ('n', 'no'):
+            return False
+        print("Please answer 'y' or 'n'.")
+
+
+def input_choice(name: str, choices: list[str]) -> str:
+    """Prompt for exactly one value. The user can pick a number from the list,
+    type one of the listed names, or enter a new name (which must be confirmed)."""
+    choices_sub_list = '\n'.join(f'{i + 1}. {choice}' for i, choice in enumerate(choices))
+    range_str = f'between 1 and {len(choices)}'
+    prompt = (
+        f'{name} - type a number {range_str} or enter a new name\n'
+        f'{choices_sub_list}\n: '
+    )
+    while True:
+        raw = input(prompt).strip()
+        if not raw:
+            print('Value cannot be empty, please try again.')
+            continue
+        if raw.isnumeric():
+            n = int(raw)
+            if n <= 0 or n > len(choices):
+                print(f'Number {raw} is not {range_str}.')
                 continue
-            return choices[int(choice) - 1]
-        else:
-            return choice
+            return choices[n - 1]
+        if raw in choices:
+            return raw
+        if confirm_new_value(raw, name.lower()):
+            return raw
+
+
+def input_choices(name: str, choices: list[str]) -> list[str]:
+    """Prompt for one or more values, comma-separated. Each value can be a
+    number from the list, one of the listed names, or a new name (which must
+    be confirmed individually)."""
+    choices_sub_list = '\n'.join(f'{i + 1}. {choice}' for i, choice in enumerate(choices))
+    range_str = f'between 1 and {len(choices)}'
+    prompt = (
+        f'{name}(s) - type one or more numbers {range_str} and/or names, '
+        f'comma-separated\n{choices_sub_list}\n: '
+    )
+    while True:
+        raw = input(prompt).strip()
+        if not raw:
+            print('Value cannot be empty, please try again.')
+            continue
+        tokens = [t.strip() for t in raw.split(',') if t.strip()]
+        if not tokens:
+            print('Value cannot be empty, please try again.')
+            continue
+        results: list[str] = []
+        retry = False
+        for token in tokens:
+            if token.isnumeric():
+                n = int(token)
+                if n <= 0 or n > len(choices):
+                    print(f'Number {token} is not {range_str}.')
+                    retry = True
+                    break
+                results.append(choices[n - 1])
+            elif token in choices:
+                results.append(token)
+            elif confirm_new_value(token, name.lower()):
+                results.append(token)
+        if retry:
+            continue
+        # Preserve user order, drop duplicates
+        deduped = list(dict.fromkeys(results))
+        if not deduped:
+            print(f'You must choose at least one {name.lower()}, please try again.')
+            continue
+        return deduped
 
 
 class Input:
     def __init__(self) -> None:
-        parser = argparse.ArgumentParser(description='Submit a project as a candidate Starter Model.')
+        parser = argparse.ArgumentParser(description='Submit a project as a candidate DEEPCRAFT&trade; Studio Accelerator.')
         parser.add_argument('--path', required=True,
                             help='The root path of the project.')
         parser.add_argument('--name', default=None,
@@ -68,9 +142,10 @@ class Input:
         metadata.add_argument('--description', type=arg_validator(DESCRIPTION_MAX_LENGTH), default=None,
                               help=f'The description of the project; Max {DESCRIPTION_MAX_LENGTH} characters.')
         metadata.add_argument('--algorithm', choices=ALGORITHM, default=None,
-                              help='The supervised learning algorithm of the project; Default is Classification.')
-        metadata.add_argument('--sensor', choices=SENSORS, default=None,
-                              help='The target sensor of the project; Default is Other.')
+                              help='The supervised learning algorithm of the project.')
+        metadata.add_argument('--sensor', choices=SENSORS, default=None, action='append',
+                              help='The target sensor of the project. Pass --sensor multiple '
+                                   'times to specify more than one sensor.')
         args = parser.parse_args()
         self.project_path = Path(args.path).resolve()
         self.project_name = args.name or self.project_path.name
@@ -80,5 +155,5 @@ class Input:
             title=args.title or input_str('Project title', TITLE_MAX_LENGTH),
             description=args.description or input_str('Project description', DESCRIPTION_MAX_LENGTH),
             algorithm=args.algorithm or input_choice('Algorithm', ALGORITHM),
-            sensors=[args.sensor or input_choice('Sensor', SENSORS, default_idx=len(SENSORS) - 1)],
+            sensors=args.sensor if args.sensor else input_choices('Sensor', SENSORS),
         ) if args.override_metadata or not (self.project_path / 'metadata.json').exists() else None
