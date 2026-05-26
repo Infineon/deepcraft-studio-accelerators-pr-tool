@@ -1,8 +1,16 @@
 import argparse
 import re
+import shutil
 from argparse import ArgumentTypeError
 from pathlib import Path
 from typing import Callable
+
+from image_selector import get_available_images, get_available_tags, select_image
+
+
+IMAGES_BROWSE_URL = 'https://github.com/Reyev123/deepcraft-ai-hub/tree/main/default-images'
+
+COLUMN_PADDING = 2  # spaces between columns in numbered-choice prompts
 
 TITLE_MAX_LENGTH = 40
 DESCRIPTION_MAX_LENGTH = 100
@@ -10,11 +18,11 @@ ALGORITHM = ['Classification', 'Regression', 'Object Detection']
 SENSORS = [
     'Microphone',
     'Camera',
+    'IMU', 'Vibration',
     'Radar',
     'Capacitive Sensing', 'Inductive Sensing',
     'Current', 'Voltage', 'Power',
     'Torque', 'RPM',
-    'IMU', 'Vibration',
     'DPS',
     'Other',
 ]
@@ -31,10 +39,57 @@ def arg_validator(max_len: int) -> Callable[[str], str]:
     return validate_arg
 
 
-def input_str(name: str, max_len: int) -> str:
-    prompt = f'{name} (max {max_len} characters): '
+def _separator(char: str) -> str:
+    """Return a horizontal rule sized to the current terminal width.
+
+    Used to visually separate one prompt from the next, so repeated prompts
+    (after empty/invalid input) don't blur together.
+    """
+    width = shutil.get_terminal_size((80, 24)).columns
+    return char * width
+
+
+def _format_choices(choices: list[str]) -> str:
+    """Render a numbered list of choices as a compact multi-column block.
+
+    The number of columns is sized to the current terminal width. Items are
+    laid out column-major, so reading top-to-bottom and then left-to-right
+    preserves the original (e.g. alphabetical) order of ``choices``.
+    """
+    n = len(choices)
+    if n == 0:
+        return ''
+    number_width = len(str(n))
+    entries = [f'{i + 1:>{number_width}}. {choice}' for i, choice in enumerate(choices)]
+    col_width = max(len(e) for e in entries) + COLUMN_PADDING
+    term_width = shutil.get_terminal_size((80, 24)).columns
+    num_cols = max(1, term_width // col_width)
+    num_rows = (n + num_cols - 1) // num_cols
+    rows: list[str] = []
+    for row in range(num_rows):
+        cells = []
+        for col in range(num_cols):
+            idx = col * num_rows + row
+            if idx < n:
+                cells.append(entries[idx].ljust(col_width))
+        rows.append(''.join(cells).rstrip())
+    return '\n'.join(rows)
+
+
+def input_str(name: str, max_len: int, default: str | None = None) -> str:
+    top_sep = _separator('=')
+    bottom_sep = _separator('-')
+    default_line = f'>>> Press Enter to keep: {default}\n' if default else ''
+    prompt = (
+        f'{top_sep}\n'
+        f'{name} (max {max_len} characters)\n'
+        f'{default_line}'
+        f'{bottom_sep}\n: '
+    )
     while True:
         value = input(prompt).strip()
+        if not value and default:
+            return default
         if not value:
             print('Value cannot be empty, please try again.')
             continue
@@ -44,12 +99,10 @@ def input_str(name: str, max_len: int) -> str:
         return value
 
 
-def confirm_new_value(value: str, kind: str) -> bool:
-    """Ask the user to confirm using a value that is not in the suggested list."""
+def confirm(question: str) -> bool:
+    """Ask a yes/no question; loop until the user types y/yes or n/no."""
     while True:
-        answer = input(
-            f'"{value}" is not in the suggested {kind} list. Use it anyway? (y/n): '
-        ).strip().lower()
+        answer = input(f'{question} (y/n): ').strip().lower()
         if answer in ('y', 'yes'):
             return True
         if answer in ('n', 'no'):
@@ -57,17 +110,48 @@ def confirm_new_value(value: str, kind: str) -> bool:
         print("Please answer 'y' or 'n'.")
 
 
-def input_choice(name: str, choices: list[str]) -> str:
+def confirm_metadata() -> str:
+    """Ask the user to approve, redo, or abort metadata.
+
+    Returns ``'yes'``, ``'no'`` (redo), or ``'abort'``.
+    """
+    while True:
+        answer = input(
+            'Proceed with this metadata? (y = yes / n = redo / a = abort): '
+        ).strip().lower()
+        if answer in ('y', 'yes'):
+            return 'yes'
+        if answer in ('n', 'no'):
+            return 'no'
+        if answer in ('a', 'abort'):
+            return 'abort'
+        print("Please answer 'y', 'n', or 'a'.")
+
+
+def confirm_new_value(value: str, kind: str) -> bool:
+    """Ask the user to confirm using a value that is not in the suggested list."""
+    return confirm(f'"{value}" is not in the suggested {kind} list. Use it anyway?')
+
+
+def input_choice(name: str, choices: list[str], default: str | None = None) -> str:
     """Prompt for exactly one value. The user can pick a number from the list,
     type one of the listed names, or enter a new name (which must be confirmed)."""
-    choices_sub_list = '\n'.join(f'{i + 1}. {choice}' for i, choice in enumerate(choices))
+    choices_sub_list = _format_choices(choices)
     range_str = f'between 1 and {len(choices)}'
+    top_sep = _separator('=')
+    bottom_sep = _separator('-')
+    default_line = f'>>> Press Enter to keep: {default}\n' if default else ''
     prompt = (
+        f'{top_sep}\n'
         f'{name} - type a number {range_str} or enter a new name\n'
-        f'{choices_sub_list}\n: '
+        f'{default_line}'
+        f'{choices_sub_list}\n'
+        f'{bottom_sep}\n: '
     )
     while True:
         raw = input(prompt).strip()
+        if not raw and default:
+            return default
         if not raw:
             print('Value cannot be empty, please try again.')
             continue
@@ -83,18 +167,27 @@ def input_choice(name: str, choices: list[str]) -> str:
             return raw
 
 
-def input_choices(name: str, choices: list[str]) -> list[str]:
+def input_choices(name: str, choices: list[str],
+                  default: list[str] | None = None) -> list[str]:
     """Prompt for one or more values, comma-separated. Each value can be a
     number from the list, one of the listed names, or a new name (which must
     be confirmed individually)."""
-    choices_sub_list = '\n'.join(f'{i + 1}. {choice}' for i, choice in enumerate(choices))
+    choices_sub_list = _format_choices(choices)
     range_str = f'between 1 and {len(choices)}'
+    top_sep = _separator('=')
+    bottom_sep = _separator('-')
+    default_line = (f'>>> Press Enter to keep: {", ".join(default)}\n'
+                    if default else '')
     prompt = (
+        f'{top_sep}\n'
         f'{name}(s) - type one or more numbers {range_str} and/or names, '
-        f'comma-separated\n{choices_sub_list}\n: '
+        f'comma-separated\n{default_line}{choices_sub_list}\n'
+        f'{bottom_sep}\n: '
     )
     while True:
         raw = input(prompt).strip()
+        if not raw and default:
+            return list(default)
         if not raw:
             print('Value cannot be empty, please try again.')
             continue
@@ -146,14 +239,113 @@ class Input:
         metadata.add_argument('--sensor', choices=SENSORS, default=None, action='append',
                               help='The target sensor of the project. Pass --sensor multiple '
                                    'times to specify more than one sensor.')
-        args = parser.parse_args()
+        metadata.add_argument('--tag', default=None, action='append',
+                              help='Tag used to auto-pick a project image from images.json. '
+                                   'Pass --tag multiple times to specify more than one tag.')
+        metadata.add_argument('--image', default=None,
+                              help='Image name to use directly (e.g. "Audio.png"). '
+                                   'Skips the tag-based auto-selection.')
+        self._args = args = parser.parse_args()
         self.project_path = Path(args.path).resolve()
         self.project_name = args.name or self.project_path.name
         if not re.fullmatch(r'(?:[A-Z][a-z]*)+', self.project_name):
             raise ValueError(f'Project name "{self.project_name}" is not CamelCase')
-        self.metadata = dict(
-            title=args.title or input_str('Project title', TITLE_MAX_LENGTH),
-            description=args.description or input_str('Project description', DESCRIPTION_MAX_LENGTH),
-            algorithm=args.algorithm or input_choice('Algorithm', ALGORITHM),
-            sensors=args.sensor if args.sensor else input_choices('Sensor', SENSORS),
-        ) if args.override_metadata or not (self.project_path / 'metadata.json').exists() else None
+        if args.override_metadata or not (self.project_path / 'metadata.json').exists():
+            self.metadata = self.collect_metadata()
+        else:
+            self.metadata = None
+
+    def collect_metadata(self, *, use_cli_args: bool = True,
+                         previous: dict | None = None) -> dict:
+        """Build a fresh metadata dict by combining CLI flags with prompts.
+
+        When ``use_cli_args`` is True (the default for the initial run), values
+        supplied via CLI flags are reused and only the missing fields are
+        prompted for. When False (used after the user rejects the proposed
+        metadata) every field is prompted for, but the previously entered
+        values are shown as defaults so the user can press Enter to keep them.
+
+        ``previous`` is the metadata dict from the last attempt (if any). Its
+        values are used as defaults in the interactive prompts so the user only
+        needs to retype the fields they want to change.
+        """
+        args = self._args
+        prev = previous or {}
+        title_arg = args.title if use_cli_args else None
+        description_arg = args.description if use_cli_args else None
+        algorithm_arg = args.algorithm if use_cli_args else None
+        sensor_arg = args.sensor if use_cli_args else None
+        tag_arg = args.tag if use_cli_args else None
+        image_arg = args.image if use_cli_args else None
+        metadata = dict(
+            title=title_arg or input_str(
+                'Project title', TITLE_MAX_LENGTH,
+                default=prev.get('title')),
+            description=description_arg or input_str(
+                'Project description', DESCRIPTION_MAX_LENGTH,
+                default=prev.get('description')),
+            algorithm=algorithm_arg or input_choice(
+                'Algorithm', ALGORITHM,
+                default=prev.get('algorithm')),
+            sensors=(sensor_arg if sensor_arg
+                     else input_choices('Sensor', SENSORS,
+                                        default=prev.get('sensors'))),
+        )
+        prev_image = prev.get('thumbnail_image_id')
+        selected_image = self._select_image_interactive(
+            image_arg=image_arg, tag_arg=tag_arg, default=prev_image,
+        )
+        metadata['thumbnail_image_id'] = selected_image
+        metadata['main_image_id'] = selected_image
+        return metadata
+
+
+    @staticmethod
+    def _select_image_interactive(
+        *, image_arg: str | None, tag_arg: list[str] | None,
+        default: str | None = None,
+    ) -> str:
+        """Let the user choose between auto-selecting an image based on tags
+        or picking one manually from the catalog.
+
+        If ``--image`` was provided via CLI, it is used directly.
+        If ``--tag`` was provided via CLI, auto-selection runs without prompting.
+        Otherwise the user is asked interactively.
+        """
+        if image_arg:
+            return image_arg
+        if tag_arg:
+            return select_image(tag_arg)
+        available_images = get_available_images()
+        top_sep = _separator('=')
+        bottom_sep = _separator('-')
+        default_line = (f'>>> Press Enter to keep: {default}\n'
+                        if default else '')
+        prompt = (
+            f'{top_sep}\n'
+            f'Project image - choose how to set the project image\n'
+            f'{default_line}'
+            f'  1. Auto-select based on tags\n'
+            f'  2. Pick from available images\n'
+            f'{bottom_sep}\n: '
+        )
+        while True:
+            choice = input(prompt).strip()
+            if not choice and default:
+                return default
+            if choice == '1':
+                available_tags = get_available_tags()
+                if available_tags:
+                    tags = input_choices('Tag', available_tags)
+                else:
+                    tags = []
+                return select_image(tags)
+            if choice == '2':
+                if not available_images:
+                    print('No images available in the catalog.')
+                    continue
+                print(f'\nYou can browse all available images at:\n'
+                      f'  {Input.IMAGES_BROWSE_URL}\n'
+                      f'Check the images there, then pick one from the list below.\n')
+                return input_choice('Image', available_images)
+            print('Please type 1 or 2.')

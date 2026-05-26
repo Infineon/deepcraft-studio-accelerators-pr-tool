@@ -75,9 +75,18 @@ The first time you run the tool you will be:
 
 1. Prompted to authenticate with GitHub in your browser (only once &ndash;
    credentials are then cached by `gh`).
-2. Asked for project metadata (title, description, algorithm, sensors)
-   unless a `metadata.json` already exists in the project, or you pass these
-   as CLI flags.
+2. Asked for project metadata (title, description, algorithm, sensors, and
+   a project image) unless a `metadata.json` already exists in the project,
+   or you pass these as CLI flags.
+
+Once all metadata is collected (or loaded from an existing file), the tool
+shows a summary and asks you to confirm before continuing:
+
+* **y** (yes) &ndash; accept and proceed.
+* **n** (redo) &ndash; restart metadata input. Every field is prompted again
+  but the previous values are shown as defaults, so you can press Enter to
+  keep a field and only retype the ones you want to change.
+* **a** (abort) &ndash; exit immediately without writing anything.
 
 When the push completes, your default browser opens the pull request page on
 `Infineon/deepcraft-studio-accelerators` so you can review and submit it.
@@ -97,6 +106,20 @@ command line. The prompts behave as follows:
   list of numbers and/or names (for example `1, 3, MyCustomSensor`). Each
   custom name is confirmed individually, and duplicates are removed
   automatically. At least one sensor must be selected.
+* **Project image** &ndash; choose between two methods:
+  1. **Auto-select based on tags** &ndash; pick one or more domain tags
+     (for example `smart home`, `audio`, `automotive`) and the tool selects
+     the image whose tags best match. If nothing matches, `deepcraft.webp`
+     is used as default.
+  2. **Pick from available images** &ndash; the tool shows a link to the
+     [image repository](https://github.com/Reyev123/deepcraft-ai-hub/tree/main/default-images)
+     where you can preview the images, and then lets you choose one by
+     number or name from the catalog.
+
+  The selected image name is written to the `thumbnail_image_id` and
+  `main_image_id` fields of `metadata.json`. You can also skip this prompt
+  entirely by passing `--image <name>` or `--tag <tag>` on the command
+  line.
 
 
 ### Updating an existing pull request
@@ -179,6 +202,8 @@ maintain pull requests for several projects in parallel without conflicts.
 | `--description <text>` | Short project description (max 100 characters). |
 | `--algorithm <name>` | Supervised learning algorithm. Suggested values: `Classification`, `Regression`, `Object Detection`. |
 | `--sensor <name>` | Target sensor. Run `--help` to see the suggested list. Can be passed multiple times (e.g. `--sensor Microphone --sensor Camera`) to specify more than one sensor. |
+| `--image <name>` | Image name to use directly (e.g. `Audio.png`). Skips the tag-based auto-selection and the interactive image prompt. |
+| `--tag <tag>` | Tag used to auto-pick a project image. Can be passed multiple times (e.g. `--tag audio --tag "smart home"`). Skips the interactive image prompt but not the auto-selection step. Not saved to `metadata.json`. |
 | `--override-metadata` | Regenerate `metadata.json` from the options above even if one already exists. |
 
 For the complete list of options, run:
@@ -200,7 +225,7 @@ python ./pr_tool.py \
   --sensor Microphone
 ```
 
-Multiple sensors (repeat `--sensor`):
+With a specific image (skips the image prompt entirely):
 
 ```bash
 python ./pr_tool.py \
@@ -209,7 +234,23 @@ python ./pr_tool.py \
   --description "Combines audio and motion signals" \
   --algorithm Classification \
   --sensor Microphone \
-  --sensor IMU
+  --sensor IMU \
+  --image Motion.png
+```
+
+With tags for auto-selection (skips the image prompt, auto-picks the best
+match):
+
+```bash
+python ./pr_tool.py \
+  --path C:\Projects\MyMultiModalDetector \
+  --title "Multi-modal detector" \
+  --description "Combines audio and motion signals" \
+  --algorithm Classification \
+  --sensor Microphone \
+  --sensor IMU \
+  --tag audio \
+  --tag motion
 ```
 
 ## Troubleshooting

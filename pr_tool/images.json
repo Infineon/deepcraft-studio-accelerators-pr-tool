@@ -1,0 +1,147 @@
+[
+  {
+    "name": "animal_monitoring.png",
+    "tags": ["animal", "monitoring", "wildlife", "nature"],
+    "link": "https://raw.githubusercontent.com/Reyev123/deepcraft-ai-hub/main/default-images/animal_monitoring.png"
+  },
+  {
+    "name": "audio.png",
+    "tags": ["audio", "microphone", "voice", "music", "noise"],
+    "link": "https://raw.githubusercontent.com/Reyev123/deepcraft-ai-hub/main/default-images/audio.png"
+  },
+  {
+    "name": "automotive_environment.png",
+    "tags": ["automotive", "environment", "weather", "traffic", "city", "street"],
+    "link": "https://raw.githubusercontent.com/Reyev123/deepcraft-ai-hub/main/default-images/automotive_environment.png"
+  },
+  {
+    "name": "automotive_in_cabin.png",
+    "tags": ["automotive", "vehicle", "in-cabin"],
+    "link": "https://raw.githubusercontent.com/Reyev123/deepcraft-ai-hub/main/default-images/automotive_in_cabin.png"
+  },
+  {
+    "name": "automotive_machine_maintenance.png",
+    "tags": ["vehicle", "automotive", "machinery", "predictive maintenance"],
+    "link": "https://raw.githubusercontent.com/Reyev123/deepcraft-ai-hub/main/default-images/automotive_machine_maintenance.png"
+  },
+  {
+    "name": "bathroom.png",
+    "tags": ["bathroom", "smart home", "shower", "toilet", "sink", "bath", "appliances"],
+    "link": "https://raw.githubusercontent.com/Reyev123/deepcraft-ai-hub/main/default-images/bathroom.png"
+  },
+  {
+    "name": "bedroom.png",
+    "tags": ["bedroom", "smart home", "sleep"],
+    "link": "https://raw.githubusercontent.com/Reyev123/deepcraft-ai-hub/main/default-images/bedroom.png"
+  },
+  {
+    "name": "city.png",
+    "tags": ["city", "traffic", "parking", "building", "street"],
+    "link": "https://raw.githubusercontent.com/Reyev123/deepcraft-ai-hub/main/default-images/city.png"
+  },
+  {
+    "name": "electrical.png",
+    "tags": ["electronics", "power", "voltage", "current"],
+    "link": "https://raw.githubusercontent.com/Reyev123/deepcraft-ai-hub/main/default-images/electrical.png"
+  },
+  {
+    "name": "environment_nature_monitoring.png",
+    "tags": ["environment", "nature", "monitoring", "wildlife", "weather", "forest"],
+    "link": "https://raw.githubusercontent.com/Reyev123/deepcraft-ai-hub/main/default-images/environment_nature_monitoring.png"
+  },
+  {
+    "name": "health.png",
+    "tags": ["health", "monitoring"],
+    "link": "https://raw.githubusercontent.com/Reyev123/deepcraft-ai-hub/main/default-images/health.png"
+  },
+  {
+    "name": "hmi.png",
+    "tags": ["human machine interface", "camera", "radar", "touch", "microphone"],
+    "link": "https://raw.githubusercontent.com/Reyev123/deepcraft-ai-hub/main/default-images/hmi.png"
+  },
+  {
+    "name": "industrial_assembly_line_hmi.png",
+    "tags": [ "industrial", "machinery", "assembly line", "human machine interface"],
+    "link": "https://raw.githubusercontent.com/Reyev123/deepcraft-ai-hub/main/default-images/industrial_assembly_line_hmi.png"
+  },
+  {
+    "name": "industrial_big_machinery.png",
+    "tags": [ "industrial", "machinery", "assembly line"],
+    "link": "https://raw.githubusercontent.com/Reyev123/deepcraft-ai-hub/main/default-images/industrial_big_machinery.png"
+  },
+  {
+    "name": "industrial_maintenance.png",
+    "tags": ["industrial", "safety", "predictive maintenance", "machinery", "equipment"],
+    "link": "https://raw.githubusercontent.com/Reyev123/deepcraft-ai-hub/main/default-images/industrial_maintenance.png"
+  },
+  {
+    "name": "industrial_setting_safety.png",
+    "tags": ["industrial", "manufacturing", "safety", "quality", "human machine interface"],
+    "link": "https://raw.githubusercontent.com/Reyev123/deepcraft-ai-hub/main/default-images/industrial_setting_safety.png"
+  },
+  {
+    "name": "iot_smart_home.png",
+    "tags": ["smart home", "appliances", "security"],
+    "link": "https://raw.githubusercontent.com/Reyev123/deepcraft-ai-hub/main/default-images/iot_smart_home.png"
+  },
+  {
+    "name": "kitchen.png",
+    "tags": ["kitchen", "smart home", "appliances"],
+    "link": "https://raw.githubusercontent.com/Reyev123/deepcraft-ai-hub/main/default-images/kitchen.png"
+  },
+  {
+    "name": "living_room.png",
+    "tags": ["living room","smart home", "pets", "appliances"],
+    "link": "https://raw.githubusercontent.com/Reyev123/deepcraft-ai-hub/main/default-images/living_room.png"
+  },
+  {
+    "name": "motion.png",
+    "tags": ["motion", "accelerometer", "gyroscope", "magnetometer", "vibration"],
+    "link": "https://raw.githubusercontent.com/Reyev123/deepcraft-ai-hub/main/default-images/motion.png"
+  },
+  {
+    "name": "office.png",
+    "tags": ["office", "workplace", "computer", "appliances"],
+    "link": "https://raw.githubusercontent.com/Reyev123/deepcraft-ai-hub/main/default-images/office.png"
+  },
+  {
+    "name": "radar.png",
+    "tags": ["radar"],
+    "link": "https://raw.githubusercontent.com/Reyev123/deepcraft-ai-hub/main/default-images/radar.png"
+  },
+  {
+    "name": "security_monitoring.png",
+    "tags": ["security", "monitoring", "smart home", "parking", "door", "window", "alarm"],
+    "link": "https://raw.githubusercontent.com/Reyev123/deepcraft-ai-hub/main/default-images/security_monitoring.png"
+  },
+  {
+    "name": "shop_store.png",
+    "tags": ["shop", "commercial", "food", "clothing", "appliances", "grocery", "pharmacy"],
+    "link": "https://raw.githubusercontent.com/Reyev123/deepcraft-ai-hub/main/default-images/shop_store.png"
+  },
+  {
+    "name": "sport.png",
+    "tags": ["sport"],
+    "link": "https://raw.githubusercontent.com/Reyev123/deepcraft-ai-hub/main/default-images/sport.png"
+  },
+  {
+    "name": "vision.png",
+    "tags": ["vision", "camera", "security", "monitoring"],
+    "link": "https://raw.githubusercontent.com/Reyev123/deepcraft-ai-hub/main/default-images/vision.png"
+  },
+  {
+    "name": "wearables.png",
+    "tags": ["wearable", "device", "health", "sport"],
+    "link": "https://raw.githubusercontent.com/Reyev123/deepcraft-ai-hub/main/default-images/wearables.png"
+  },
+  {
+    "name": "work_site_setting.png",
+    "tags": ["industrial", "construction", "logistics", "work site"],
+    "link": "https://raw.githubusercontent.com/Reyev123/deepcraft-ai-hub/main/default-images/work_site_setting.png"
+  },
+  {
+    "name": "workshop.png",
+    "tags": ["workshop", "workplace", "tools", "appliances", "equipment"],
+    "link": "https://raw.githubusercontent.com/Reyev123/deepcraft-ai-hub/main/default-images/workshop.png"
+  }
+]

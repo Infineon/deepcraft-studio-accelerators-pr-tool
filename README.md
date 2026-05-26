@@ -15,25 +15,29 @@ chunks, and opening the pull request in the browser.
 ```
 deepcraft-studio-accelerators-pr-tool/
 ├── .gitignore
-├── README.md            <- you are here
-└── pr_tool/             <- the tool itself (entry point + modules)
-    ├── README.md        <- end-user usage instructions
-    ├── pr_tool.py       <- main script / entry point
-    ├── cli.py           <- thin wrapper around `git` and `gh` subprocess calls
-    ├── constants.py     <- repo name, base repo, branch, ignored dirs, etc.
-    ├── input.py         <- argparse + interactive prompts for project metadata
-    ├── utils.py         <- helpers (file grouping for 2 GB push limit, etc.)
-    └── validation.py    <- checks the project directory structure
+├── README.md              <- you are here
+└── pr_tool/               <- the tool itself (entry point + modules)
+    ├── README.md          <- end-user usage instructions
+    ├── pr_tool.py         <- main script / entry point
+    ├── cli.py             <- thin wrapper around `git` and `gh` subprocess calls
+    ├── constants.py       <- repo name, base repo, branch, ignored dirs, etc.
+    ├── input.py           <- argparse + interactive prompts for project metadata
+    ├── image_selector.py  <- picks the best-matching image for a project
+    ├── images.json        <- catalog of candidate project images and their tags
+    ├── utils.py           <- helpers (file grouping for 2 GB push limit, etc.)
+    └── validation.py      <- checks the project directory structure
 ```
 
 ### Module overview
 
 | File | Responsibility |
 | --- | --- |
-| `pr_tool.py` | Orchestrates the whole flow: parse args, authenticate, fork, clone, branch, commit, push, create/open PR. |
+| `pr_tool.py` | Orchestrates the whole flow: parse args, confirm metadata (with redo/abort support), authenticate, fork, clone, branch, commit, push, create/open PR. |
 | `cli.py` | `Cli` class that invokes `git` / `gh` via `subprocess.run`, prints commands and outputs, and enforces a minimum `git` version. |
 | `constants.py` | Centralized configuration: target repo (`Infineon/deepcraft-studio-accelerators`), main branch, local `.git_deepcraft` directory, and directories that must be excluded from commits (`Models`, `PreprocessorTrack`). |
-| `input.py` | `Input` class that parses CLI arguments (`--path`, `--name`, `--title`, `--description`, `--algorithm`, `--sensor`, `--override-metadata`) and falls back to interactive prompts. Validates that the project name is CamelCase. |
+| `input.py` | `Input` class that parses CLI arguments (`--path`, `--name`, `--title`, `--description`, `--algorithm`, `--sensor`, `--tag`, `--image`, `--override-metadata`) and falls back to interactive prompts. Validates that the project name is CamelCase. Calls `image_selector` to populate `thumbnail_image_id` / `main_image_id` in the generated metadata. Tag values are used only for image selection and are **not** persisted to `metadata.json`. After metadata is collected, the user is asked to confirm, redo (with previous values as defaults), or abort. |
+| `image_selector.py` | Loads the image catalog &mdash; **remote first** from `REMOTE_IMAGES_URL` (a hardcoded GitHub raw URL), falling back to the local `images.json` if the remote fetch fails; the catalog is cached per process via `@functools.cache`. On a successful fetch, mirrors the remote payload to the local file when they differ, so the local copy self-heals after accidental edits (remote is the source of truth). `get_available_tags()` returns the union of tags from the loaded catalog. `select_image()` returns the `name` of the catalog image whose tags best match a list of input tags (case-insensitive). Falls back to `DEFAULT_IMAGE` (`deepcraft.webp`) when no catalog is available, no tags are provided, or no image shares any tag. |
+| `images.json` | JSON array of `{name, tags, link}` objects. Used by `image_selector.py` as the **local fallback** when the remote catalog cannot be fetched, and to populate the interactive Tag prompt's suggested list. Kept in sync with the remote catalog automatically on every successful fetch. |
 | `utils.py` | `group_files()` splits the change set into chunks below GitHub's 2 GB per-push limit, plus a small `handle_readonly` helper used when cleaning up the working tree. |
 | `validation.py` | `validate_project_structure()` ensures the project folder contains the required items (`<name>.improj`, `Data/`, `README.md`) and nothing outside the allowed set. |
 
@@ -89,6 +93,8 @@ Pick the module that owns the behavior you want to change:
 * **Change a `git` / `gh` invocation, error handling, or version check** &rarr; `pr_tool/cli.py`
 * **Change the required / allowed project layout** &rarr; `pr_tool/validation.py`
 * **Change push chunking or filesystem helpers** &rarr; `pr_tool/utils.py`
+* **Add or update the catalog of project images** &rarr; the canonical catalog lives at `REMOTE_IMAGES_URL` (see `pr_tool/image_selector.py`); the local `pr_tool/images.json` is a fallback that is auto-refreshed from the remote on every successful run. Update the canonical (remote) copy first; the local copy follows automatically.
+* **Change the remote catalog URL or the selection algorithm** &rarr; `pr_tool/image_selector.py`
 * **Change the overall fork / clone / commit / PR sequence** &rarr; `pr_tool/pr_tool.py`
 
 Keep the runtime dependency surface minimal. If a change really needs a

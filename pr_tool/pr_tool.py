@@ -9,7 +9,7 @@ from tempfile import NamedTemporaryFile, TemporaryDirectory
 sys.path.append(os.getcwd())
 from cli import Cli
 from constants import *
-from input import Input
+from input import Input, confirm_metadata
 from utils import group_files
 from validation import validate_project_structure
 
@@ -27,13 +27,49 @@ def fork():
     time.sleep(2)  # Wait for repo to be created
 
 
-args = Input()
-project_path = args.project_path
-branch_name = project_name = args.project_name
-if args.metadata:
-    (project_path / 'metadata.json').write_text(json.dumps(args.metadata))
+def format_metadata_json(metadata: dict) -> str:
+    """Pretty-print metadata: one field per line, list values kept inline."""
+    if not metadata:
+        return '{}'
+    entries = [
+        f'  {json.dumps(key)}: {json.dumps(value)}'
+        for key, value in metadata.items()
+    ]
+    return '{\n' + ',\n'.join(entries) + '\n}\n'
 
-validate_project_structure(project_name, project_path)
+
+try:
+    args = Input()
+    project_path = args.project_path
+    branch_name = project_name = args.project_name
+    metadata_path = project_path / 'metadata.json'
+    if args.metadata:
+        metadata = args.metadata
+    elif metadata_path.exists():
+        try:
+            metadata = json.loads(metadata_path.read_text(encoding='utf-8'))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise ValueError(f'Could not read existing {metadata_path}: {exc}') from exc
+    else:
+        metadata = None
+    while metadata:
+        print('\nProject metadata:')
+        print(format_metadata_json(metadata).rstrip('\n'))
+        answer = confirm_metadata()
+        if answer == 'yes':
+            break
+        if answer == 'abort':
+            print('Aborted by user.')
+            sys.exit(0)
+        print('Restarting metadata collection... (press Enter to keep previous values)')
+        args.metadata = args.collect_metadata(use_cli_args=False, previous=metadata)
+        metadata = args.metadata
+    if args.metadata:
+        metadata_path.write_text(format_metadata_json(args.metadata), encoding='utf-8')
+    validate_project_structure(project_name, project_path)
+except ValueError as exc:
+    print(f'Error: {exc}', file=sys.stderr)
+    sys.exit(1)
 
 # Setup git and gh cli
 cli = Cli()
