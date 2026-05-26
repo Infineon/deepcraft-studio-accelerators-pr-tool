@@ -5,12 +5,9 @@ from argparse import ArgumentTypeError
 from pathlib import Path
 from typing import Callable
 
+import constants
 from image_selector import get_available_images, get_available_tags, select_image
 
-
-IMAGES_BROWSE_URL = 'https://github.com/Reyev123/deepcraft-ai-hub/tree/main/default-images'
-
-COLUMN_PADDING = 2  # spaces between columns in numbered-choice prompts
 
 TITLE_MAX_LENGTH = 40
 DESCRIPTION_MAX_LENGTH = 100
@@ -61,7 +58,7 @@ def _format_choices(choices: list[str]) -> str:
         return ''
     number_width = len(str(n))
     entries = [f'{i + 1:>{number_width}}. {choice}' for i, choice in enumerate(choices)]
-    col_width = max(len(e) for e in entries) + COLUMN_PADDING
+    col_width = max(len(e) for e in entries) + constants.COLUMN_PADDING
     term_width = shutil.get_terminal_size((80, 24)).columns
     num_cols = max(1, term_width // col_width)
     num_rows = (n + num_cols - 1) // num_cols
@@ -345,7 +342,7 @@ class Input:
                     print('No images available in the catalog.')
                     continue
                 print(f'\nYou can browse all available images at:\n'
-                      f'  {Input.IMAGES_BROWSE_URL}\n'
+                      f'  {constants.IMAGES_BROWSE_URL}\n'
                       f'Check the images there, then pick one from the list below.\n')
                 return input_choice('Image', available_images)
             print('Please type 1 or 2.')
