@@ -6,7 +6,7 @@ import time
 from subprocess import PIPE
 from tempfile import NamedTemporaryFile, TemporaryDirectory
 
-sys.path.append(os.getcwd())
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from cli import Cli
 from constants import *
 from input import Input, confirm_metadata
@@ -158,14 +158,18 @@ try:  # Always remove git_dir after this block
     elif diff_names_deleted:
         git(['commit', '-m', 'Delete files'])
         git(['push', '-u', 'origin', 'HEAD'])
+    else:
+        print('\n' + '=' * 60)
+        print('  No changes detected — nothing to push.')
+        print('=' * 60 + '\n')
 
     # Create or reopen a pull request to Infineon and view it
     head_branch = f'{user}:{branch_name}'
     pr_state = gh(['pr', 'view', head_branch, '--json', 'state', '--jq', '.state'], check=False)
-    if not pr_state or pr_state == 'CLOSED':
-        gh(['pr', 'create', '--base', 'main', '--head', head_branch, '--web', '--title', f'Accelerator {project_name}'])
-    else:
+    if pr_state in ('OPEN', 'MERGED'):
         gh(['pr', 'view', head_branch, '--web'], check=False)
+    else:
+        gh(['pr', 'create', '--base', 'main', '--head', head_branch, '--web', '--title', f'Accelerator {project_name}'])
 finally:
     # Clean up local git
     shutil.rmtree(git_dir, onerror=onerror)

@@ -57,8 +57,11 @@ Anything else at the project root will cause the tool to fail with a clear
 error message. The `Models/` and `PreprocessorTrack/` directories are tracked
 in your project but are **not** pushed to GitHub.
 
-The project name (also used as the branch name on GitHub) must be in
-**CamelCase**, e.g. `MyAudioClassifier`.
+The project name **defaults to the project folder's name** and is used as
+both the **branch name** and the **PR title prefix** on GitHub (e.g.
+`Accelerator MyAudioClassifier`). It must be in **CamelCase**, e.g.
+`MyAudioClassifier`. You can override it with `--name <CamelCaseName>` if
+the folder name doesn't match the desired project name.
 
 ## Usage
 
