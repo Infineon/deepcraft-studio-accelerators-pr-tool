@@ -38,20 +38,44 @@ def format_metadata_json(metadata: dict) -> str:
     return '{\n' + ',\n'.join(entries) + '\n}\n'
 
 
+def print_header(title: str) -> None:
+    sep = '=' * 60
+    print(f'\n{sep}')
+    print(f'  {title}')
+    print(sep)
+
+
+# ── Tool start ────────────────────────────────────────────────
+print_header('DEEPCRAFT Studio Accelerators — PR Tool')
+print()
+
 try:
     args = Input()
     project_path = args.project_path
     branch_name = project_name = args.project_name
     metadata_path = project_path / 'metadata.json'
+
+    # Initial summary
+    has_existing_metadata = metadata_path.exists()
+    print_header('Project Summary')
+    print(f'  Project path  : {project_path}')
+    print(f'  Project name  : {project_name}')
+    print(f'  Branch        : {branch_name}')
+    print(f'  metadata.json : {"found" if has_existing_metadata else "not found — will be created"}')
+    print()
+
     if args.metadata:
         metadata = args.metadata
-    elif metadata_path.exists():
+    elif has_existing_metadata:
         try:
             metadata = json.loads(metadata_path.read_text(encoding='utf-8'))
         except (OSError, json.JSONDecodeError) as exc:
             raise ValueError(f'Could not read existing {metadata_path}: {exc}') from exc
     else:
         metadata = None
+
+    # Metadata review / collection
+    print_header('Metadata')
     while metadata:
         print('\nProject metadata:')
         print(format_metadata_json(metadata).rstrip('\n'))
@@ -70,6 +94,10 @@ try:
 except ValueError as exc:
     print(f'Error: {exc}', file=sys.stderr)
     sys.exit(1)
+
+print_header('Forking & Syncing Repository')
+print('  Checking git version, authenticating, and preparing fork...')
+print()
 
 # Setup git and gh cli
 cli = Cli()
@@ -116,60 +144,83 @@ try:  # Always remove git_dir after this block
 
         # Switch to the project branch
         branch_ref = f'refs/heads/{branch_name}'
-        if git(['ls-remote', '--exit-code', '--quiet', 'origin', branch_ref], check=False) == 2:
-            # Remote branch does not exist
+        branch_is_new = git(['ls-remote', '--exit-code', '--quiet', 'origin', branch_ref], check=False) == 2
+        if branch_is_new:
             git(['switch', '-c', branch_name, MAIN_BRANCH])
         else:
-            # Remote branch exists
             git(['switch', branch_name])
         commits_ahead = int(git(['rev-list', '--count', branch_ref, f'^refs/heads/{MAIN_BRANCH}'], stdout=PIPE))
         commit_verb = 'Add' if commits_ahead <= 0 else 'Modify'
 
+    # Print execution summary
+    print_header('Creating / Updating Pull Request')
+    print(f'  GitHub user   : {user}')
+    print(f'  Fork          : {user}/{REPO_NAME}')
+    print(f'  Branch        : {branch_name} ({"new" if branch_is_new else "existing"})')
+    print(f'  Mode          : {commit_verb} files')
+    print()
+
     # Push project content to the user's remote (origin)
     cli.cwd = repo_root = project_path.parent
-    # Handle deletions
-    ignore_paths = [f':^{project_path / dir}' for dir in GIT_IGNORED_DIRS]
-    diff_names_deleted = git(['diff', '--name-only', '--diff-filter=D', '--relative', '--', str(project_path), *ignore_paths], stdout=PIPE)
-    if diff_names_deleted:
-        with NamedTemporaryFile('w', delete=False) as pathspec:
-            pathspec.write(diff_names_deleted)
-            pathspec.close()
-            git(['rm', f'--pathspec-from-file={pathspec.name}'])
-            os.remove(pathspec.name)
-    # Divide push to groups, each with a size less than 2GB
-    git(['add', '--intent-to-add', '--', project_name, *ignore_paths])
-    diff_names = git(['diff', '--name-only', '--relative', '--', str(project_path), *ignore_paths], stdout=PIPE)
-    gh_push_limit = (2 * 1024 * 1024 * 1024)  # 2 GB
-    file_groups = list(group_files(repo_root, diff_names, gh_push_limit - 1)) if diff_names else []
-    if file_groups:
-        number_of_chunks = len(file_groups)
-        for index, group in enumerate(file_groups):
+    try:
+        # Handle deletions
+        ignore_paths = [f':^{project_path / dir}' for dir in GIT_IGNORED_DIRS]
+        diff_names_deleted = git(['diff', '--name-only', '--diff-filter=D', '--relative', '--', str(project_path), *ignore_paths], stdout=PIPE)
+        if diff_names_deleted:
             with NamedTemporaryFile('w', delete=False) as pathspec:
-                pathspec.write('\n'.join(group))
+                pathspec.write(diff_names_deleted)
                 pathspec.close()
-                git(['add', f'--pathspec-from-file={pathspec.name}'])
+                git(['rm', f'--pathspec-from-file={pathspec.name}'])
                 os.remove(pathspec.name)
-            if index == 0 == number_of_chunks - 1:
-                commit_msg = commit_verb + ' files'
-            else:
-                commit_msg = commit_verb + f' chunk {index + 1} of {number_of_chunks}'
-            git(['commit', '--no-verify', '-m', commit_msg])
+        # Divide push to groups, each with a size less than 2GB
+        git(['add', '--intent-to-add', '--', project_name, *ignore_paths])
+        diff_names = git(['diff', '--name-only', '--relative', '--', str(project_path), *ignore_paths], stdout=PIPE)
+        gh_push_limit = (2 * 1024 * 1024 * 1024)  # 2 GB
+        file_groups = list(group_files(repo_root, diff_names, gh_push_limit - 1)) if diff_names else []
+        if file_groups:
+            number_of_chunks = len(file_groups)
+            for index, group in enumerate(file_groups):
+                with NamedTemporaryFile('w', delete=False) as pathspec:
+                    pathspec.write('\n'.join(group))
+                    pathspec.close()
+                    git(['add', f'--pathspec-from-file={pathspec.name}'])
+                    os.remove(pathspec.name)
+                if index == 0 == number_of_chunks - 1:
+                    commit_msg = commit_verb + ' files'
+                else:
+                    commit_msg = commit_verb + f' chunk {index + 1} of {number_of_chunks}'
+                git(['commit', '--no-verify', '-m', commit_msg])
+                git(['push', '-u', 'origin', 'HEAD'])
+        elif diff_names_deleted:
+            git(['commit', '-m', 'Delete files'])
             git(['push', '-u', 'origin', 'HEAD'])
-    elif diff_names_deleted:
-        git(['commit', '-m', 'Delete files'])
-        git(['push', '-u', 'origin', 'HEAD'])
-    else:
-        print('\n' + '=' * 60)
-        print('  No changes detected — nothing to push.')
-        print('=' * 60 + '\n')
+        else:
+            print('\n' + '=' * 60)
+            print('  No changes detected — nothing to push.')
+            print('=' * 60 + '\n')
 
-    # Create or reopen a pull request to Infineon and view it
-    head_branch = f'{user}:{branch_name}'
-    pr_state = gh(['pr', 'view', head_branch, '--json', 'state', '--jq', '.state'], check=False)
-    if pr_state in ('OPEN', 'MERGED'):
-        gh(['pr', 'view', head_branch, '--web'], check=False)
-    else:
-        gh(['pr', 'create', '--base', 'main', '--head', head_branch, '--web', '--title', f'Accelerator {project_name}'])
+        # Create or reopen a pull request to Infineon and view it
+        head_branch = f'{user}:{branch_name}'
+        pr_state = gh(['pr', 'view', head_branch, '--json', 'state', '--jq', '.state'], check=False)
+        if pr_state in ('OPEN', 'MERGED'):
+            gh(['pr', 'view', head_branch, '--web'], check=False)
+        else:
+            gh(['pr', 'create', '--base', 'main', '--head', head_branch, '--web', '--title', f'Accelerator {project_name}'])
+
+        print_header('Pull Request Submitted Successfully')
+        print('  Your project has been pushed and the pull request is')
+        print('  open in your browser. Thank you for your submission!')
+        print()
+    except Exception as exc:
+        print_header('Pull Request Failed')
+        print(f'  Something went wrong while creating/updating the PR.')
+        print(f'  Error: {exc}')
+        print()
+        print('  Please check the output above for details and try')
+        print('  again. Re-running the tool on the same project is')
+        print('  safe — it will pick up where it left off.')
+        print()
+        sys.exit(1)
 finally:
     # Clean up local git
     shutil.rmtree(git_dir, onerror=onerror)
