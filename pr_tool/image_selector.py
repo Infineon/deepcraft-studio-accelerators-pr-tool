@@ -24,9 +24,14 @@ from pathlib import Path
 from urllib.error import URLError
 from urllib.request import urlopen
 
+import constants
+
 LOCAL_IMAGES_FILE = Path(__file__).resolve().parent / 'images.json'
 REMOTE_IMAGES_URL = (
-    'https://raw.githubusercontent.com/Reyev123/deepcraft-ai-hub/main/images.json'
+    constants.IMAGES_BROWSE_URL
+    .replace('https://github.com/', 'https://raw.githubusercontent.com/')
+    .rstrip('/')
+    + '/main/images.json'
 )
 REMOTE_FETCH_TIMEOUT = 5  # seconds
 DEFAULT_IMAGE = 'deepcraft.webp'

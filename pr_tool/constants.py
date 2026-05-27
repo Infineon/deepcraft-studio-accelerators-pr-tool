@@ -9,5 +9,5 @@ GIT_DIR = '.git_deepcraft'
 GIT_IGNORED_DIRS = ['Models', 'PreprocessorTrack']
 
 # ── UI / Images ──────────────────────────────────────────────
-IMAGES_BROWSE_URL = 'https://github.com/Reyev123/deepcraft-ai-hub/tree/main/default-images'
+IMAGES_BROWSE_URL = 'https://github.com/Reyev123/ai-hub-default-images'
 COLUMN_PADDING = 2  # spaces between columns in numbered-choice prompts
