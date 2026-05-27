@@ -115,7 +115,7 @@ command line. The prompts behave as follows:
      the image whose tags best match. If nothing matches, `deepcraft.webp`
      is used as default.
   2. **Pick from available images** &ndash; the tool shows a link to the
-     [image repository](https://github.com/Reyev123/deepcraft-ai-hub/tree/main/default-images)
+     [image repository](https://github.com/Reyev123/ai-hub-default-images)
      where you can preview the images, and then lets you choose one by
      number or name from the catalog.
 
