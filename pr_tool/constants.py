@@ -31,9 +31,6 @@ TARGET_REPOS: dict[str, TargetRepo] = {
     ),
 }
 
-# ── Metadata ───────────────────────────────────────────────
-IMAGES_BROWSE_URL = 'https://github.com/Reyev123/ai-hub-default-images'
-
 # ── UI ───────────────────────────────────────────────────────
 COLUMN_PADDING = 2  # spaces between columns in numbered-choice prompts
 

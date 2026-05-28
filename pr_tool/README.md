@@ -33,6 +33,9 @@ just re-run it after making changes to your project.
 No additional Python packages are required &mdash; the tool only uses the
 standard library.
 
+Project image names and tags are read from **`pr_tool/images.json` only**
+(shipped with the tool). The catalog is not downloaded from the network.
+
 ## Target repositories (`--repo`)
 
 | `--repo` value | GitHub repository | Project layout |
@@ -145,10 +148,8 @@ command line. The prompts behave as follows:
      (for example `smart home`, `audio`, `automotive`) and the tool selects
      the image whose tags best match. If nothing matches, `deepcraft.webp`
      is used as default.
-  2. **Pick from available images** &ndash; the tool shows a link to the
-     [image repository](https://github.com/Reyev123/ai-hub-default-images)
-     where you can preview the images, and then lets you choose one by
-     number or name from the catalog.
+  2. **Pick from available images** &ndash; choose one by number or name from
+     the catalog listed in the prompt (defined in `pr_tool/images.json`).
 
   The selected image name is written to the `thumbnail_image_id` and
   `main_image_id` fields of `metadata.json`. You can also skip this prompt

@@ -356,8 +356,6 @@ class Input:
                 if not available_images:
                     print(f'{constants.ICON_WARNING} No images available in the catalog.')
                     continue
-                print(f'\n{constants.ICON_INFO} You can browse all available images at:\n'
-                      f'  {constants.IMAGES_BROWSE_URL}\n'
-                      f'Check the images there, then pick one from the list below.\n')
+                print(f'\n{constants.ICON_INFO} Pick an image file name from the catalog list below.\n')
                 return input_choice('Image', available_images)
             print(f'{constants.ICON_WARNING} Please type 1 or 2.')

@@ -1,147 +1,118 @@
 [
   {
     "name": "animal_monitoring.png",
-    "tags": ["animal", "monitoring", "wildlife", "nature"],
-    "link": "https://raw.githubusercontent.com/Reyev123/ai-hub-default-images/main/animal_monitoring.png"
+    "tags": ["animal", "monitoring", "wildlife", "nature"]
   },
   {
     "name": "audio.png",
-    "tags": ["audio", "microphone", "voice", "music", "noise"],
-    "link": "https://raw.githubusercontent.com/Reyev123/ai-hub-default-images/main/audio.png"
+    "tags": ["audio", "microphone", "voice", "music", "noise"]
   },
   {
     "name": "automotive_environment.png",
-    "tags": ["automotive", "environment", "weather", "traffic", "city", "street"],
-    "link": "https://raw.githubusercontent.com/Reyev123/ai-hub-default-images/main/automotive_environment.png"
+    "tags": ["automotive", "environment", "weather", "traffic", "city", "street"]
   },
   {
     "name": "automotive_in_cabin.png",
-    "tags": ["automotive", "vehicle", "in-cabin"],
-    "link": "https://raw.githubusercontent.com/Reyev123/ai-hub-default-images/main/automotive_in_cabin.png"
+    "tags": ["automotive", "vehicle", "in-cabin"]
   },
   {
     "name": "automotive_machine_maintenance.png",
-    "tags": ["vehicle", "automotive", "machinery", "predictive maintenance"],
-    "link": "https://raw.githubusercontent.com/Reyev123/ai-hub-default-images/main/automotive_machine_maintenance.png"
+    "tags": ["vehicle", "automotive", "machinery", "predictive maintenance"]
   },
   {
     "name": "bathroom.png",
-    "tags": ["bathroom", "smart home", "shower", "toilet", "sink", "bath", "appliances"],
-    "link": "https://raw.githubusercontent.com/Reyev123/ai-hub-default-images/main/bathroom.png"
+    "tags": ["bathroom", "smart home", "shower", "toilet", "sink", "bath", "appliances"]
   },
   {
     "name": "bedroom.png",
-    "tags": ["bedroom", "smart home", "sleep"],
-    "link": "https://raw.githubusercontent.com/Reyev123/ai-hub-default-images/main/bedroom.png"
+    "tags": ["bedroom", "smart home", "sleep"]
   },
   {
     "name": "city.png",
-    "tags": ["city", "traffic", "parking", "building", "street"],
-    "link": "https://raw.githubusercontent.com/Reyev123/ai-hub-default-images/main/city.png"
+    "tags": ["city", "traffic", "parking", "building", "street"]
   },
   {
     "name": "electrical.png",
-    "tags": ["electronics", "power", "voltage", "current"],
-    "link": "https://raw.githubusercontent.com/Reyev123/ai-hub-default-images/main/electrical.png"
+    "tags": ["electronics", "power", "voltage", "current"]
   },
   {
     "name": "environment_nature_monitoring.png",
-    "tags": ["environment", "nature", "monitoring", "wildlife", "weather", "forest"],
-    "link": "https://raw.githubusercontent.com/Reyev123/ai-hub-default-images/main/environment_nature_monitoring.png"
+    "tags": ["environment", "nature", "monitoring", "wildlife", "weather", "forest"]
   },
   {
     "name": "health.png",
-    "tags": ["health", "monitoring"],
-    "link": "https://raw.githubusercontent.com/Reyev123/ai-hub-default-images/main/health.png"
+    "tags": ["health", "monitoring"]
   },
   {
     "name": "hmi.png",
-    "tags": ["human machine interface", "camera", "radar", "touch", "microphone"],
-    "link": "https://raw.githubusercontent.com/Reyev123/ai-hub-default-images/main/hmi.png"
+    "tags": ["human machine interface", "camera", "radar", "touch", "microphone"]
   },
   {
     "name": "industrial_assembly_line_hmi.png",
-    "tags": [ "industrial", "machinery", "assembly line", "human machine interface"],
-    "link": "https://raw.githubusercontent.com/Reyev123/ai-hub-default-images/main/industrial_assembly_line_hmi.png"
+    "tags": [ "industrial", "machinery", "assembly line", "human machine interface"]
   },
   {
     "name": "industrial_big_machinery.png",
-    "tags": [ "industrial", "machinery", "assembly line"],
-    "link": "https://raw.githubusercontent.com/Reyev123/ai-hub-default-images/main/industrial_big_machinery.png"
+    "tags": [ "industrial", "machinery", "assembly line"]
   },
   {
     "name": "industrial_maintenance.png",
-    "tags": ["industrial", "safety", "predictive maintenance", "machinery", "equipment"],
-    "link": "https://raw.githubusercontent.com/Reyev123/ai-hub-default-images/main/industrial_maintenance.png"
+    "tags": ["industrial", "safety", "predictive maintenance", "machinery", "equipment"]
   },
   {
     "name": "industrial_setting_safety.png",
-    "tags": ["industrial", "manufacturing", "safety", "quality", "human machine interface"],
-    "link": "https://raw.githubusercontent.com/Reyev123/ai-hub-default-images/main/industrial_setting_safety.png"
+    "tags": ["industrial", "manufacturing", "safety", "quality", "human machine interface"]
   },
   {
     "name": "iot_smart_home.png",
-    "tags": ["smart home", "appliances", "security"],
-    "link": "https://raw.githubusercontent.com/Reyev123/ai-hub-default-images/main/iot_smart_home.png"
+    "tags": ["smart home", "appliances", "security"]
   },
   {
     "name": "kitchen.png",
-    "tags": ["kitchen", "smart home", "appliances"],
-    "link": "https://raw.githubusercontent.com/Reyev123/ai-hub-default-images/main/kitchen.png"
+    "tags": ["kitchen", "smart home", "appliances"]
   },
   {
     "name": "living_room.png",
-    "tags": ["living room","smart home", "pets", "appliances"],
-    "link": "https://raw.githubusercontent.com/Reyev123/ai-hub-default-images/main/living_room.png"
+    "tags": ["living room","smart home", "pets", "appliances"]
   },
   {
     "name": "motion.png",
-    "tags": ["motion", "accelerometer", "gyroscope", "magnetometer", "vibration"],
-    "link": "https://raw.githubusercontent.com/Reyev123/ai-hub-default-images/main/motion.png"
+    "tags": ["motion", "accelerometer", "gyroscope", "magnetometer", "vibration"]
   },
   {
     "name": "office.png",
-    "tags": ["office", "workplace", "computer", "appliances"],
-    "link": "https://raw.githubusercontent.com/Reyev123/ai-hub-default-images/main/office.png"
+    "tags": ["office", "workplace", "computer", "appliances"]
   },
   {
     "name": "radar.png",
-    "tags": ["radar"],
-    "link": "https://raw.githubusercontent.com/Reyev123/ai-hub-default-images/main/radar.png"
+    "tags": ["radar"]
   },
   {
     "name": "security_monitoring.png",
-    "tags": ["security", "monitoring", "smart home", "parking", "door", "window", "alarm"],
-    "link": "https://raw.githubusercontent.com/Reyev123/ai-hub-default-images/main/security_monitoring.png"
+    "tags": ["security", "monitoring", "smart home", "parking", "door", "window", "alarm"]
   },
   {
     "name": "shop_store.png",
-    "tags": ["shop", "commercial", "food", "clothing", "appliances", "grocery", "pharmacy"],
-    "link": "https://raw.githubusercontent.com/Reyev123/ai-hub-default-images/main/shop_store.png"
+    "tags": ["shop", "commercial", "food", "clothing", "appliances", "grocery", "pharmacy"]
   },
   {
     "name": "sport.png",
-    "tags": ["sport"],
-    "link": "https://raw.githubusercontent.com/Reyev123/ai-hub-default-images/main/sport.png"
+    "tags": ["sport"]
   },
   {
     "name": "vision.png",
-    "tags": ["vision", "camera", "security", "monitoring"],
-    "link": "https://raw.githubusercontent.com/Reyev123/ai-hub-default-images/main/vision.png"
+    "tags": ["vision", "camera", "security", "monitoring"]
   },
   {
     "name": "wearables.png",
-    "tags": ["wearable", "device", "health", "sport"],
-    "link": "https://raw.githubusercontent.com/Reyev123/ai-hub-default-images/main/wearables.png"
+    "tags": ["wearable", "device", "health", "sport"]
   },
   {
     "name": "work_site_setting.png",
-    "tags": ["industrial", "construction", "logistics", "work site"],
-    "link": "https://raw.githubusercontent.com/Reyev123/ai-hub-default-images/main/work_site_setting.png"
+    "tags": ["industrial", "construction", "logistics", "work site"]
   },
   {
     "name": "workshop.png",
-    "tags": ["workshop", "workplace", "tools", "appliances", "equipment"],
-    "link": "https://raw.githubusercontent.com/Reyev123/ai-hub-default-images/main/workshop.png"
+    "tags": ["workshop", "workplace", "tools", "appliances", "equipment"]
   }
 ]

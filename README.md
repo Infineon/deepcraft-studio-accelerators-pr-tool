@@ -35,12 +35,12 @@ deepcraft-studio-accelerators-pr-tool/
 | --- | --- |
 | `pr_tool.py` | Orchestrates the whole flow: parse args, confirm metadata (with redo/abort support), authenticate, fork, clone, branch, commit, push, create/open PR. |
 | `cli.py` | `Cli` class that invokes `git` / `gh` via `subprocess.run`. Resolves `gh` from bundled `pr_tool/gh.exe` first, then `PATH`. Prints commands and outputs, and enforces a minimum `git` version. |
-| `constants.py` | `TARGET_REPOS` registry and shared settings (branch, `.git_deepcraft`, icons, image catalog URL). |
+| `constants.py` | `TARGET_REPOS` registry and shared settings (branch, `.git_deepcraft`, icons). |
 | `target_repo.py` | `TargetRepo` dataclass (repo URL, PR title template, layout key, ignored dirs). |
 | `project_layouts.py` | Modular layout validators (`accelerator_layout`, `model_zoo_psoc_layout`); all require `README.md` and `metadata.json`. |
 | `input.py` | `Input` class: CLI parsing, metadata collection, layout-based project name validation. |
-| `image_selector.py` | Loads the image catalog &mdash; **remote first** from `REMOTE_IMAGES_URL` (derived from `IMAGES_BROWSE_URL` in `constants.py`), falling back to the local `images.json` if the remote fetch fails; the catalog is cached per process via `@functools.cache`. On a successful fetch, mirrors the remote payload to the local file when they differ, so the local copy self-heals after accidental edits (remote is the source of truth). `get_available_tags()` returns the union of tags from the loaded catalog. `select_image()` returns the `name` of the catalog image whose tags best match a list of input tags (case-insensitive). Falls back to `DEFAULT_IMAGE` (`deepcraft.webp`) when no catalog is available, no tags are provided, or no image shares any tag. |
-| `images.json` | JSON array of `{name, tags, link}` objects pointing at [Reyev123/ai-hub-default-images](https://github.com/Reyev123/ai-hub-default-images). Used by `image_selector.py` as the **local fallback** when the remote catalog cannot be fetched, and to populate the interactive Tag prompt's suggested list. Kept in sync with the remote catalog automatically on every successful fetch. |
+| `image_selector.py` | Loads the image catalog from local `images.json` (cached per process via `@functools.cache`). `get_available_tags()` returns the union of tags from the catalog. `select_image()` returns the `name` of the catalog image whose tags best match a list of input tags (case-insensitive). Falls back to `DEFAULT_IMAGE` (`deepcraft.webp`) when no catalog is available, no tags are provided, or no image shares any tag. |
+| `images.json` | JSON array of `{name, tags}` objects shipped with the tool. Used by `image_selector.py` for tag-based auto-selection and the interactive image picker. |
 | `utils.py` | `group_files()` splits the change set into chunks below GitHub's 2 GB per-push limit, plus a small `handle_readonly` helper used when cleaning up the working tree. |
 | `validation.py` | `validate_project_structure()` delegates to the layout registered on the target repo. |
 
@@ -97,8 +97,8 @@ Pick the module that owns the behavior you want to change:
 * **Change a `git` / `gh` invocation, error handling, or version check** &rarr; `pr_tool/cli.py`
 * **Change the required / allowed project layout** &rarr; `pr_tool/validation.py`
 * **Change push chunking or filesystem helpers** &rarr; `pr_tool/utils.py`
-* **Add or update the catalog of project images** &rarr; update the canonical catalog in [Reyev123/ai-hub-default-images](https://github.com/Reyev123/ai-hub-default-images) (`images.json` on `main`); the local `pr_tool/images.json` is a fallback that is auto-refreshed from the remote on every successful run.
-* **Change the image repository URL or the selection algorithm** &rarr; `pr_tool/constants.py` (`IMAGES_BROWSE_URL`) and `pr_tool/image_selector.py`
+* **Add or update the catalog of project images** &rarr; edit `pr_tool/images.json` (`name` and `tags` per entry).
+* **Change the image selection algorithm** &rarr; `pr_tool/image_selector.py`
 * **Change the overall fork / clone / commit / PR sequence** &rarr; `pr_tool/pr_tool.py`
 
 Keep the runtime dependency surface minimal. If a change really needs a
