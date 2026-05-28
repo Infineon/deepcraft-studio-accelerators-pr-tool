@@ -37,6 +37,20 @@ def onerror(func, path, exc_info):
         raise
 
 
+def cleanup_git_scratch(git_dir: Path) -> None:
+    """Remove separate-git-dir scratch and any now-empty parent folders up to .git_deepcraft."""
+    if git_dir.exists():
+        shutil.rmtree(git_dir, onerror=onerror)
+    current = git_dir.parent
+    while current.name != GIT_DIR:
+        if not current.exists() or any(current.iterdir()):
+            return
+        current.rmdir()
+        current = current.parent
+    if current.exists() and not any(current.iterdir()):
+        current.rmdir()
+
+
 def fork(base_repo: str) -> None:
     gh(['repo', 'fork', base_repo, '--default-branch-only'])
     time.sleep(2)  # Wait for repo to be created
@@ -279,8 +293,4 @@ except KeyboardInterrupt:
     print()
     sys.exit(130)
 finally:
-    # Clean up local git
-    if git_dir.exists():
-        shutil.rmtree(git_dir, onerror=onerror)
-    if git_dir.parent.exists() and not any(git_dir.parent.iterdir()):
-        git_dir.parent.rmdir()
+    cleanup_git_scratch(git_dir)

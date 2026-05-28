@@ -201,9 +201,10 @@ While the tool runs it creates a working directory next to your project:
 
 ```
 <project-path>/..
-├── <ProjectName>/         <- your DEEPCRAFT&trade; Studio project
+├── <ProjectName>/              <- your DEEPCRAFT&trade; Studio project
 └── .git_deepcraft/
-    └── <ProjectName>/     <- git metadata for this project's PR
+    └── <repo-key>/             <- e.g. accelerators, model-zoo-psoc
+        └── <ProjectName>/      <- git metadata for this project's PR
 ```
 
 This folder is the tool's separate **git directory** &mdash; it stores all of
@@ -212,14 +213,16 @@ pull request, **without** placing a `.git` folder inside your project itself.
 That keeps your project directory clean and avoids interfering with any
 existing version control you may have there.
 
-Each project gets its own subfolder under `.git_deepcraft/`, so you can
-maintain pull requests for several projects in parallel without conflicts.
+Each project uses `.git_deepcraft/<repo-key>/<ProjectName>/`. If you run the
+tool for several projects at the same time, each keeps its own subfolder until
+that run finishes.
 
 **What happens if you delete it?**
 
-* **Between runs:** nothing bad. The tool already deletes the folder at the
-  end of every successful run, and recreates it at the start of the next one
-  by cloning your fork freshly. Deleting it manually is harmless.
+* **After a run:** the tool removes this project's scratch folder and, when
+  nothing else is using `.git_deepcraft`, removes the whole `.git_deepcraft`
+  directory. The next run recreates it by cloning your fork freshly.
+* **Between runs:** deleting it manually is harmless for the same reason.
 * **During a run:** the current run will fail, because git can no longer find
   its metadata. Simply re-run the command &mdash; the folder will be
   recreated from scratch.
