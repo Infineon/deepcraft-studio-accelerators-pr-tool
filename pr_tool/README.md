@@ -209,6 +209,7 @@ maintain pull requests for several projects in parallel without conflicts.
 | `--image <name>` | Image name to use directly (e.g. `Audio.png`). Skips the tag-based auto-selection and the interactive image prompt. |
 | `--tag <tag>` | Tag used to auto-pick a project image. Can be passed multiple times (e.g. `--tag audio --tag "smart home"`). Skips the interactive image prompt but not the auto-selection step. Not saved to `metadata.json`. |
 | `--override-metadata` | Regenerate `metadata.json` from the options above even if one already exists. |
+| `--verbose`, `-v` | Print every `git`/`gh` command and captured output (default is short progress lines only). |
 
 For the complete list of options, run:
 
@@ -278,5 +279,6 @@ python ./pr_tool.py \
 * **Your fork is out of sync** &mdash; the tool can recreate your fork
   automatically; it will prompt you to grant the `delete_repo` scope first.
 
-The tool prints every `git` and `gh` command it runs, so the console output
+By default the tool prints short progress lines only. For full command output,
+run with `--verbose` (or `-v`); that prints every `git` and `gh` command and
 is the first place to look when something goes wrong.

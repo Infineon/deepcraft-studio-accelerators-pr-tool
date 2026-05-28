@@ -88,10 +88,10 @@ def input_str(name: str, max_len: int, default: str | None = None) -> str:
         if not value and default:
             return default
         if not value:
-            print('Value cannot be empty, please try again.')
+            print(f'{constants.ICON_WARNING} Value cannot be empty, please try again.')
             continue
         if len(value) > max_len:
-            print(f'Value is more than {max_len} characters, please try again.')
+            print(f'{constants.ICON_WARNING} Value is more than {max_len} characters, please try again.')
             continue
         return value
 
@@ -104,7 +104,7 @@ def confirm(question: str) -> bool:
             return True
         if answer in ('n', 'no'):
             return False
-        print("Please answer 'y' or 'n'.")
+        print(f"{constants.ICON_WARNING} Please answer 'y' or 'n'.")
 
 
 def confirm_metadata() -> str:
@@ -122,7 +122,7 @@ def confirm_metadata() -> str:
             return 'no'
         if answer in ('a', 'abort'):
             return 'abort'
-        print("Please answer 'y', 'n', or 'a'.")
+        print(f"{constants.ICON_WARNING} Please answer 'y', 'n', or 'a'.")
 
 
 def confirm_new_value(value: str, kind: str) -> bool:
@@ -150,12 +150,12 @@ def input_choice(name: str, choices: list[str], default: str | None = None) -> s
         if not raw and default:
             return default
         if not raw:
-            print('Value cannot be empty, please try again.')
+            print(f'{constants.ICON_WARNING} Value cannot be empty, please try again.')
             continue
         if raw.isnumeric():
             n = int(raw)
             if n <= 0 or n > len(choices):
-                print(f'Number {raw} is not {range_str}.')
+                print(f'{constants.ICON_WARNING} Number {raw} is not {range_str}.')
                 continue
             return choices[n - 1]
         if raw in choices:
@@ -186,11 +186,11 @@ def input_choices(name: str, choices: list[str],
         if not raw and default:
             return list(default)
         if not raw:
-            print('Value cannot be empty, please try again.')
+            print(f'{constants.ICON_WARNING} Value cannot be empty, please try again.')
             continue
         tokens = [t.strip() for t in raw.split(',') if t.strip()]
         if not tokens:
-            print('Value cannot be empty, please try again.')
+            print(f'{constants.ICON_WARNING} Value cannot be empty, please try again.')
             continue
         results: list[str] = []
         retry = False
@@ -198,7 +198,7 @@ def input_choices(name: str, choices: list[str],
             if token.isnumeric():
                 n = int(token)
                 if n <= 0 or n > len(choices):
-                    print(f'Number {token} is not {range_str}.')
+                    print(f'{constants.ICON_WARNING} Number {token} is not {range_str}.')
                     retry = True
                     break
                 results.append(choices[n - 1])
@@ -211,7 +211,7 @@ def input_choices(name: str, choices: list[str],
         # Preserve user order, drop duplicates
         deduped = list(dict.fromkeys(results))
         if not deduped:
-            print(f'You must choose at least one {name.lower()}, please try again.')
+            print(f'{constants.ICON_WARNING} You must choose at least one {name.lower()}, please try again.')
             continue
         return deduped
 
@@ -226,6 +226,8 @@ class Input:
                                  'Default is the containing directory\'s name.')
         parser.add_argument('--override-metadata', action='store_true',
                             help='Override existing metadata.json file, if any, with meta-data options below.')
+        parser.add_argument('--verbose', '-v', action='store_true',
+                            help='Print every git/gh command and captured output (for debugging).')
         metadata = parser.add_argument_group('Project meta-data')
         metadata.add_argument('--title', type=arg_validator(TITLE_MAX_LENGTH), default=None,
                               help=f'The title of the project; Max {TITLE_MAX_LENGTH} characters.')
@@ -243,6 +245,7 @@ class Input:
                               help='Image name to use directly (e.g. "Audio.png"). '
                                    'Skips the tag-based auto-selection.')
         self._args = args = parser.parse_args()
+        self.verbose = args.verbose
         self.project_path = Path(args.path).resolve()
         self.project_name = args.name or self.project_path.name
         if not re.fullmatch(r'(?:[A-Z][a-z]*)+', self.project_name):
@@ -339,10 +342,10 @@ class Input:
                 return select_image(tags)
             if choice == '2':
                 if not available_images:
-                    print('No images available in the catalog.')
+                    print(f'{constants.ICON_WARNING} No images available in the catalog.')
                     continue
-                print(f'\nYou can browse all available images at:\n'
+                print(f'\n{constants.ICON_INFO} You can browse all available images at:\n'
                       f'  {constants.IMAGES_BROWSE_URL}\n'
                       f'Check the images there, then pick one from the list below.\n')
                 return input_choice('Image', available_images)
-            print('Please type 1 or 2.')
+            print(f'{constants.ICON_WARNING} Please type 1 or 2.')

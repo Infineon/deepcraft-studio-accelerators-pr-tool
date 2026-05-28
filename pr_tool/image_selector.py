@@ -43,10 +43,10 @@ def _parse_images(payload: str, source: str) -> list[dict] | None:
     try:
         data = json.loads(payload)
     except json.JSONDecodeError as exc:
-        print(f'Warning: images file at {source} is not valid JSON: {exc}.')
+        print(f'{constants.ICON_WARNING} Warning: images file at {source} is not valid JSON: {exc}.')
         return None
     if not isinstance(data, list):
-        print(f'Warning: images file at {source} is not a JSON array.')
+        print(f'{constants.ICON_WARNING} Warning: images file at {source} is not a JSON array.')
         return None
     return data
 
@@ -64,7 +64,7 @@ def _sync_local_with_remote(remote_payload: str) -> None:
             LOCAL_IMAGES_FILE.read_text(encoding='utf-8') if local_exists else None
         )
     except OSError as exc:
-        print(f'Warning: could not read local images file at {LOCAL_IMAGES_FILE} '
+        print(f'{constants.ICON_WARNING} Warning: could not read local images file at {LOCAL_IMAGES_FILE} '
               f'while checking sync with {REMOTE_IMAGES_URL}: {exc}.')
         return
     if local_payload == remote_payload:
@@ -73,14 +73,14 @@ def _sync_local_with_remote(remote_payload: str) -> None:
         LOCAL_IMAGES_FILE.parent.mkdir(parents=True, exist_ok=True)
         LOCAL_IMAGES_FILE.write_text(remote_payload, encoding='utf-8')
     except OSError as exc:
-        print(f'Warning: could not update local images file at {LOCAL_IMAGES_FILE} '
+        print(f'{constants.ICON_WARNING} Warning: could not update local images file at {LOCAL_IMAGES_FILE} '
               f'from {REMOTE_IMAGES_URL}: {exc}.')
         return
     if local_exists:
-        print(f'Local images file at {LOCAL_IMAGES_FILE} was out of sync with '
+        print(f'{constants.ICON_INFO} Local images file at {LOCAL_IMAGES_FILE} was out of sync with '
               f'{REMOTE_IMAGES_URL} and has been refreshed.')
     else:
-        print(f'Local images file at {LOCAL_IMAGES_FILE} created from {REMOTE_IMAGES_URL}.')
+        print(f'{constants.ICON_INFO} Local images file at {LOCAL_IMAGES_FILE} created from {REMOTE_IMAGES_URL}.')
 
 
 def _fetch_remote_images() -> list[dict] | None:
@@ -94,7 +94,7 @@ def _fetch_remote_images() -> list[dict] | None:
         with urlopen(REMOTE_IMAGES_URL, timeout=REMOTE_FETCH_TIMEOUT) as response:
             payload = response.read().decode('utf-8')
     except (URLError, TimeoutError, OSError) as exc:
-        print(f'Warning: could not fetch images file from {REMOTE_IMAGES_URL}: {exc}.')
+        print(f'{constants.ICON_WARNING} Warning: could not fetch images file from {REMOTE_IMAGES_URL}: {exc}.')
         return None
     parsed = _parse_images(payload, REMOTE_IMAGES_URL)
     if parsed is not None:
@@ -106,12 +106,12 @@ def _load_local_images() -> list[dict] | None:
     """Load the catalog from ``LOCAL_IMAGES_FILE``. Returns ``None`` on any
     filesystem, decoding, parse, or shape error."""
     if not LOCAL_IMAGES_FILE.exists():
-        print(f'Warning: local images file not found at {LOCAL_IMAGES_FILE}.')
+        print(f'{constants.ICON_WARNING} Warning: local images file not found at {LOCAL_IMAGES_FILE}.')
         return None
     try:
         payload = LOCAL_IMAGES_FILE.read_text(encoding='utf-8')
     except OSError as exc:
-        print(f'Warning: could not read local images file at {LOCAL_IMAGES_FILE}: {exc}.')
+        print(f'{constants.ICON_WARNING} Warning: could not read local images file at {LOCAL_IMAGES_FILE}: {exc}.')
         return None
     return _parse_images(payload, str(LOCAL_IMAGES_FILE))
 
@@ -127,11 +127,11 @@ def _load_images() -> list[dict]:
     remote = _fetch_remote_images()
     if remote is not None:
         return remote
-    print(f'Falling back to local images file at {LOCAL_IMAGES_FILE}.')
+    print(f'{constants.ICON_INFO} Falling back to local images file at {LOCAL_IMAGES_FILE}.')
     local = _load_local_images()
     if local is not None:
         return local
-    print(f'No image catalog available; default image "{DEFAULT_IMAGE}" will be used.')
+    print(f'{constants.ICON_WARNING} No image catalog available; default image "{DEFAULT_IMAGE}" will be used.')
     return []
 
 
@@ -173,7 +173,7 @@ def select_image(tags: list[str]) -> str:
         return DEFAULT_IMAGE
     user_tag_set = {t.strip().lower() for t in tags if isinstance(t, str) and t.strip()}
     if not user_tag_set:
-        print(f'No tags provided; falling back to default image "{DEFAULT_IMAGE}".')
+        print(f'{constants.ICON_INFO} No tags provided; falling back to default image "{DEFAULT_IMAGE}".')
         return DEFAULT_IMAGE
     best_name = ''
     best_score = 0
@@ -190,7 +190,7 @@ def select_image(tags: list[str]) -> str:
             best_score = score
             best_name = name
     if best_score == 0:
-        print(f'Warning: no image in the catalog shares any tag with '
+        print(f'{constants.ICON_WARNING} Warning: no image in the catalog shares any tag with '
               f'{sorted(user_tag_set)}; falling back to default image "{DEFAULT_IMAGE}".')
         return DEFAULT_IMAGE
     return best_name

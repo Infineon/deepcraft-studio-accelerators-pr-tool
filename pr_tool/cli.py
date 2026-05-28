@@ -1,7 +1,7 @@
 import shutil
 import sys
 from pathlib import Path
-from subprocess import CompletedProcess, run, PIPE
+from subprocess import CalledProcessError, CompletedProcess, run, PIPE
 
 from constants import *
 
@@ -28,20 +28,28 @@ def _resolve_gh_executable() -> tuple[str, str]:
         return on_path, 'PATH'
     expected = TOOL_DIR / 'gh.exe'
     print(
-        'Error: GitHub CLI (gh) not found.\n'
+        f'{ICON_ERROR} Error: GitHub CLI (gh) not found.\n'
         f'  Expected bundled executable at: {expected}\n'
-        '  Or install GitHub CLI and add it to your PATH:\n'
-        '  https://cli.github.com/',
+        '  Quick fix:\n'
+        '  1) Install GitHub CLI: https://cli.github.com/\n'
+        '  2) Add the install folder (not gh.exe) to PATH\n'
+        '  3) Restart your terminal/shell and run again',
         file=sys.stderr,
     )
     sys.exit(1)
 
 
 class Cli:
-    def __init__(self):
+    def __init__(self, *, verbose: bool = False):
         self.cwd = None
         self.git_dir = None
+        self.verbose = verbose
         self.gh_executable, self.gh_source = _resolve_gh_executable()
+
+    def progress(self, message: str) -> None:
+        """Print a short status line (always shown in quiet mode)."""
+        if not self.verbose:
+            print(f'  {ICON_PROGRESS} {message}')
 
     def gh_version(self) -> str:
         """Return the ``gh --version`` string (first line), or ``unknown``."""
@@ -59,19 +67,24 @@ class Cli:
         return 'unknown version'
 
     def run(self, args: list, *popenargs, cwd=None, check=True, stdout=None, **kwargs) -> CliResult:
-        print(' '.join(args))
-        result = run(args, *popenargs, cwd=cwd or self.cwd, check=check, stdout=stdout, **kwargs)
+        cmd = ' '.join(args)
+        if self.verbose:
+            print(cmd)
+        try:
+            result = run(args, *popenargs, cwd=cwd or self.cwd, check=check, stdout=stdout, **kwargs)
+        except CalledProcessError:
+            print(f'{ICON_ERROR} Command failed: {cmd}', file=sys.stderr)
+            raise
         if stdout == PIPE:
             output = result.stdout.decode().strip()
             if not output and not check:
                 output = str(result.returncode)
-            print('-> ' + output[:512])
+            if self.verbose:
+                print('-> ' + output[:512])
             return output
-        elif not check:
+        if not check and self.verbose:
             print(f'-> {result.returncode}')
-            return result.returncode
-        else:
-            return result
+        return result.returncode if not check else result
 
     def git(self, args: list, *popenargs, **kwargs) -> CliResult:
         return self.run(['git', f'--git-dir={self.git_dir}'] + args, *popenargs, **kwargs)
@@ -91,7 +104,7 @@ class Cli:
         version_msg = f'git version {MINIMUM_GIT_VERSION} or newer is required.'
         if version < MINIMUM_GIT_VERSION:
             # The message clarifies why update-git-for-windows is called
-            print(version_msg)
+            print(f'{ICON_ERROR} {version_msg}')
         if version < MINIMUM_UPDATABLE_GIT_VERSION or (
                 version < MINIMUM_GIT_VERSION and self.git(['update-git-for-windows'], check=False) == 1):
-            raise Exception(version_msg)
+            raise Exception(f'{ICON_ERROR} {version_msg}')

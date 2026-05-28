@@ -11,3 +11,10 @@ GIT_IGNORED_DIRS = ['Models', 'PreprocessorTrack']
 # ── UI / Images ──────────────────────────────────────────────
 IMAGES_BROWSE_URL = 'https://github.com/Reyev123/ai-hub-default-images'
 COLUMN_PADDING = 2  # spaces between columns in numbered-choice prompts
+
+ICON_SUCCESS = '✅'
+ICON_ERROR = '❌'
+ICON_WARNING = '⚠️'
+ICON_INFO = 'ℹ️'
+ICON_PROGRESS = '▶️'
+ICON_ABORT = '🛑'
