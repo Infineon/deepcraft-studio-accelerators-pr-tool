@@ -9,8 +9,22 @@ from tempfile import NamedTemporaryFile, TemporaryDirectory
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from cli import Cli
-from constants import *
-from input import Input, confirm_metadata
+from constants import (
+    GIT_DIR,
+    HOST,
+    ICON_ABORT,
+    ICON_ERROR,
+    ICON_INFO,
+    ICON_PROGRESS,
+    ICON_PULL_REQUEST,
+    ICON_SUCCESS,
+    ICON_WARNING,
+    DEEPCRAFT,
+    MAIN_BRANCH,
+    TARGET_REPOS,
+)
+from input import Input, confirm, confirm_metadata
+from target_repo import validate_target_repos_registry
 from utils import group_files
 from validation import validate_project_structure
 
@@ -23,8 +37,8 @@ def onerror(func, path, exc_info):
         raise
 
 
-def fork():
-    gh(['repo', 'fork', BASE_REPO, '--default-branch-only'])
+def fork(base_repo: str) -> None:
+    gh(['repo', 'fork', base_repo, '--default-branch-only'])
     time.sleep(2)  # Wait for repo to be created
 
 
@@ -48,28 +62,50 @@ def print_header(title: str, *, icon: str = '') -> None:
 
 
 # ── Tool start ────────────────────────────────────────────────
-print_header('DEEPCRAFT Studio Accelerators — PR Tool', icon=ICON_INFO)
-print()
+validate_target_repos_registry(TARGET_REPOS)
 
 try:
     args = Input()
+except ValueError as exc:
+    print(f'{ICON_ERROR} Error: {exc}', file=sys.stderr)
+    sys.exit(1)
+
+print_header(f'{DEEPCRAFT} Pull Request Tool', icon=ICON_PULL_REQUEST)
+
+try:
+    target_repo = args.target_repo
     project_path = args.project_path
     branch_name = project_name = args.project_name
     metadata_path = project_path / 'metadata.json'
 
     # Initial summary
-    has_existing_metadata = metadata_path.exists()
     print_header('Project Summary', icon=ICON_INFO)
+    print(f'  Target        : {target_repo.label} ({args.repo_key})')
+    print(f'  Repository    : {target_repo.base_repo}')
     print(f'  Project path  : {project_path}')
     print(f'  Project name  : {project_name}')
     print(f'  Branch        : {branch_name}')
-    meta_status = f'{ICON_SUCCESS} found' if has_existing_metadata else f'{ICON_INFO} not found — will be created'
+    has_existing_metadata = metadata_path.exists()
+    meta_status = (
+        f'{ICON_SUCCESS} found' if has_existing_metadata
+        else f'{ICON_INFO} not found — will be created'
+    )
+    print(f'  Project layout: {target_repo.project_layout}')
     print(f'  metadata.json : {meta_status}')
+    readme_status = (
+        f'{ICON_SUCCESS} found' if (project_path / 'README.md').is_file()
+        else f'{ICON_WARNING} missing (required)'
+    )
+    print(f'  README.md     : {readme_status}')
+    print()
+    if not confirm('Proceed with this project and repository?'):
+        print(f'{ICON_ABORT} Aborted by user.')
+        sys.exit(0)
     print()
 
     if args.metadata:
         metadata = args.metadata
-    elif has_existing_metadata:
+    elif metadata_path.exists():
         try:
             metadata = json.loads(metadata_path.read_text(encoding='utf-8'))
         except (OSError, json.JSONDecodeError) as exc:
@@ -93,7 +129,8 @@ try:
         metadata = args.metadata
     if args.metadata:
         metadata_path.write_text(format_metadata_json(args.metadata), encoding='utf-8')
-    validate_project_structure(project_name, project_path)
+
+    validate_project_structure(project_name, project_path, target_repo)
 except ValueError as exc:
     print(f'{ICON_ERROR} Error: {exc}', file=sys.stderr)
     sys.exit(1)
@@ -102,7 +139,7 @@ print_header('Forking & Syncing Repository', icon=ICON_PROGRESS)
 print(f'  {ICON_INFO} Checking git version, authenticating, and preparing fork...')
 
 # Setup git and gh cli
-cli = Cli(verbose=args.verbose)
+cli = Cli(verbose=args.verbose, base_repo=target_repo.base_repo)
 gh_label = Path(cli.gh_executable).name if cli.gh_source == 'bundled' else cli.gh_executable
 print(f'  GitHub CLI    : {gh_label} ({cli.gh_source}, {cli.gh_version()})')
 if args.verbose:
@@ -113,29 +150,27 @@ cli.ensure_git_version()
 git = cli.git
 gh = cli.gh
 gh(['config', 'set', 'prompt', 'disabled'])
-auth_status = json.loads(gh(['auth', 'status', '--hostname', 'github.com', '--json', 'hosts', '--jq', '.hosts | add']))
-if auth_status[0]['state'] != 'success' or 'workflow' not in auth_status[0]['scopes']:
-    gh(['auth', 'login', '--hostname', 'github.com', '--web', '--git-protocol', 'https', '--scopes', 'workflow'])
+cli.ensure_github_auth(required_scopes=('workflow',))
 user = gh(['api', 'user', '--jq', '.login'])
 email = gh(['api', 'user', '--jq', '.email'])
 
 # Ensure fork exists and is in-sync with the source repo
 cli.progress('Checking fork...')
-if gh(['repo', 'view', f'{user}/{REPO_NAME}', '--json', 'name'], check=False) != 0:
+if gh(['repo', 'view', f'{user}/{target_repo.repo_name}', '--json', 'name'], check=False) != 0:
     cli.progress('Creating fork...')
-    fork()
-elif gh(['repo', 'sync', f'{user}/{REPO_NAME}', '--force', '--branch', MAIN_BRANCH], check=False) != 0:
+    fork(target_repo.base_repo)
+elif gh(['repo', 'sync', f'{user}/{target_repo.repo_name}', '--force', '--branch', MAIN_BRANCH], check=False) != 0:
     print(f'{ICON_WARNING} Your fork is out of sync with the source repository. Authenticate again to allow deleting the forked repo, so a new one can be created.')
     cli.progress('Recreating fork...')
     gh(['auth', 'refresh', '--hostname', 'github.com', '-s', 'workflow,delete_repo'])
-    gh(['repo', 'delete', f'{user}/{REPO_NAME}', '--yes'])
-    fork()
+    gh(['repo', 'delete', f'{user}/{target_repo.repo_name}', '--yes'])
+    fork(target_repo.base_repo)
 
-cli.git_dir = git_dir = project_path.parent / GIT_DIR / project_name
+cli.git_dir = git_dir = project_path.parent / GIT_DIR / target_repo.key / project_name
 if git_dir.exists():
     shutil.rmtree(git_dir, onerror=onerror)
 else:
-    git_dir.parent.mkdir(exist_ok=True)
+    git_dir.parent.mkdir(parents=True, exist_ok=True)
 try:  # Always remove git_dir after this block
     # Initialize local git
     cli.progress('Preparing local git workspace...')
@@ -143,8 +178,8 @@ try:  # Always remove git_dir after this block
         cli.cwd = tmpdir
         # Clone repo empty and shallow; --no-single-branch is required to allow this copy to fetch other branches later
         git(['clone', '--no-checkout', '--depth', '1', '--no-single-branch', f'--separate-git-dir={git_dir}',
-             f'{HOST}/{user}/{REPO_NAME}.git', tmpdir])
-        git(['remote', 'add', '-t', MAIN_BRANCH, 'upstream', BASE_REPO_URL])
+             f'{HOST}/{user}/{target_repo.repo_name}.git', tmpdir])
+        git(['remote', 'add', '-t', MAIN_BRANCH, 'upstream', target_repo.base_repo_url])
         git(['config', 'advice.updateSparsePath', 'false'])
         git(['config', 'core.safecrlf', 'false'])
         git(['config', 'user.email', email])
@@ -167,7 +202,7 @@ try:  # Always remove git_dir after this block
     # Print execution summary
     print_header('Creating / Updating Pull Request', icon=ICON_PROGRESS)
     print(f'  GitHub user   : {user}')
-    print(f'  Fork          : {user}/{REPO_NAME}')
+    print(f'  Fork          : {user}/{target_repo.repo_name}')
     print(f'  Branch        : {branch_name} ({"new" if branch_is_new else "existing"})')
     print(f'  Mode          : {commit_verb} files')
     print()
@@ -176,7 +211,7 @@ try:  # Always remove git_dir after this block
     cli.cwd = repo_root = project_path.parent
     try:
         # Handle deletions
-        ignore_paths = [f':^{project_path / dir}' for dir in GIT_IGNORED_DIRS]
+        ignore_paths = [f':^{project_path / dir}' for dir in target_repo.git_ignored_dirs]
         diff_names_deleted = git(['diff', '--name-only', '--diff-filter=D', '--relative', '--', str(project_path), *ignore_paths], stdout=PIPE)
         if diff_names_deleted:
             with NamedTemporaryFile('w', delete=False) as pathspec:
@@ -220,7 +255,8 @@ try:  # Always remove git_dir after this block
         if pr_state in ('OPEN', 'MERGED'):
             gh(['pr', 'view', head_branch, '--web'], check=False)
         else:
-            gh(['pr', 'create', '--base', 'main', '--head', head_branch, '--web', '--title', f'Accelerator {project_name}'])
+            gh(['pr', 'create', '--base', MAIN_BRANCH, '--head', head_branch, '--web',
+                '--title', target_repo.pr_title(project_name)])
 
         print_header('Pull Request Submitted Successfully', icon=ICON_SUCCESS)
         print('  Your project has been pushed and the pull request is')

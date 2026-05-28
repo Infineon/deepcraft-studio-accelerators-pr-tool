@@ -1,12 +1,13 @@
 import argparse
-import re
 import shutil
 from argparse import ArgumentTypeError
 from pathlib import Path
 from typing import Callable
 
 import constants
+from target_repo import get_target_repo
 from image_selector import get_available_images, get_available_tags, select_image
+from project_layouts import get_project_layout
 
 
 TITLE_MAX_LENGTH = 40
@@ -218,7 +219,15 @@ def input_choices(name: str, choices: list[str],
 
 class Input:
     def __init__(self) -> None:
-        parser = argparse.ArgumentParser(description='Submit a project as a candidate DEEPCRAFT&trade; Studio Accelerator.')
+        repo_choices = ', '.join(f'{key} ({cfg.repo_name})' for key, cfg in constants.TARGET_REPOS.items())
+        parser = argparse.ArgumentParser(
+            description=f'Submit a project to an Infineon {constants.DEEPCRAFT} GitHub repository.',
+        )
+        parser.add_argument(
+            '--repo', required=True, choices=sorted(constants.TARGET_REPOS),
+            metavar='TARGET',
+            help=f'Target repository. Choices: {repo_choices}',
+        )
         parser.add_argument('--path', required=True,
                             help='The root path of the project.')
         parser.add_argument('--name', default=None,
@@ -246,10 +255,13 @@ class Input:
                                    'Skips the tag-based auto-selection.')
         self._args = args = parser.parse_args()
         self.verbose = args.verbose
+        self.repo_key = args.repo
+        self.target_repo = get_target_repo(args.repo)
         self.project_path = Path(args.path).resolve()
         self.project_name = args.name or self.project_path.name
-        if not re.fullmatch(r'(?:[A-Z][a-z]*)+', self.project_name):
-            raise ValueError(f'Project name "{self.project_name}" is not CamelCase')
+        get_project_layout(self.target_repo.project_layout).validate_project_name(
+            self.project_name,
+        )
         if args.override_metadata or not (self.project_path / 'metadata.json').exists():
             self.metadata = self.collect_metadata()
         else:

@@ -35,12 +35,14 @@ deepcraft-studio-accelerators-pr-tool/
 | --- | --- |
 | `pr_tool.py` | Orchestrates the whole flow: parse args, confirm metadata (with redo/abort support), authenticate, fork, clone, branch, commit, push, create/open PR. |
 | `cli.py` | `Cli` class that invokes `git` / `gh` via `subprocess.run`. Resolves `gh` from bundled `pr_tool/gh.exe` first, then `PATH`. Prints commands and outputs, and enforces a minimum `git` version. |
-| `constants.py` | Centralized configuration: target repo (`Infineon/deepcraft-studio-accelerators`), main branch, local `.git_deepcraft` directory, directories excluded from commits (`Models`, `PreprocessorTrack`), and image catalog settings (`IMAGES_BROWSE_URL`). |
-| `input.py` | `Input` class that parses CLI arguments (`--path`, `--name`, `--title`, `--description`, `--algorithm`, `--sensor`, `--tag`, `--image`, `--override-metadata`) and falls back to interactive prompts. Validates that the project name is CamelCase. Calls `image_selector` to populate `thumbnail_image_id` / `main_image_id` in the generated metadata. Tag values are used only for image selection and are **not** persisted to `metadata.json`. After metadata is collected, the user is asked to confirm, redo (with previous values as defaults), or abort. |
+| `constants.py` | `TARGET_REPOS` registry and shared settings (branch, `.git_deepcraft`, icons, image catalog URL). |
+| `target_repo.py` | `TargetRepo` dataclass (repo URL, PR title template, layout key, ignored dirs). |
+| `project_layouts.py` | Modular layout validators (`accelerator_layout`, `model_zoo_psoc_layout`); all require `README.md` and `metadata.json`. |
+| `input.py` | `Input` class: CLI parsing, metadata collection, layout-based project name validation. |
 | `image_selector.py` | Loads the image catalog &mdash; **remote first** from `REMOTE_IMAGES_URL` (derived from `IMAGES_BROWSE_URL` in `constants.py`), falling back to the local `images.json` if the remote fetch fails; the catalog is cached per process via `@functools.cache`. On a successful fetch, mirrors the remote payload to the local file when they differ, so the local copy self-heals after accidental edits (remote is the source of truth). `get_available_tags()` returns the union of tags from the loaded catalog. `select_image()` returns the `name` of the catalog image whose tags best match a list of input tags (case-insensitive). Falls back to `DEFAULT_IMAGE` (`deepcraft.webp`) when no catalog is available, no tags are provided, or no image shares any tag. |
 | `images.json` | JSON array of `{name, tags, link}` objects pointing at [Reyev123/ai-hub-default-images](https://github.com/Reyev123/ai-hub-default-images). Used by `image_selector.py` as the **local fallback** when the remote catalog cannot be fetched, and to populate the interactive Tag prompt's suggested list. Kept in sync with the remote catalog automatically on every successful fetch. |
 | `utils.py` | `group_files()` splits the change set into chunks below GitHub's 2 GB per-push limit, plus a small `handle_readonly` helper used when cleaning up the working tree. |
-| `validation.py` | `validate_project_structure()` ensures the project folder contains the required items (`<name>.improj`, `Data/`, `README.md`) and nothing outside the allowed set. |
+| `validation.py` | `validate_project_structure()` delegates to the layout registered on the target repo. |
 
 ## Requirements
 
@@ -56,7 +58,7 @@ End-user instructions live in [`pr_tool/README.md`](pr_tool/README.md). In
 short, from the `pr_tool/` directory:
 
 ```bash
-python ./pr_tool.py --path <project-path>
+python ./pr_tool.py --repo accelerators --path <project-path>
 ```
 
 Run `python ./pr_tool.py --help` to see all flags.
@@ -90,7 +92,8 @@ source .venv/bin/activate
 Pick the module that owns the behavior you want to change:
 
 * **New CLI flag or interactive prompt** &rarr; `pr_tool/input.py`
-* **Change which repo / branch / ignored directories are used** &rarr; `pr_tool/constants.py`
+* **Add or change a target repository** &rarr; `pr_tool/constants.py` (`TARGET_REPOS`) and `pr_tool/target_repo.py`
+* **Add or change a project layout** &rarr; `pr_tool/project_layouts.py` (`LAYOUTS`)
 * **Change a `git` / `gh` invocation, error handling, or version check** &rarr; `pr_tool/cli.py`
 * **Change the required / allowed project layout** &rarr; `pr_tool/validation.py`
 * **Change push chunking or filesystem helpers** &rarr; `pr_tool/utils.py`
@@ -105,17 +108,18 @@ here.
 ### 3. Test locally
 
 Because the tool talks to GitHub, it's easiest to validate changes against
-your own fork of `Infineon/deepcraft-studio-accelerators`:
+your own fork of the target repository:
 
 1. Temporarily point `BASE_REPO_OWNER` in `pr_tool/constants.py` at your own
    GitHub user/org so you don't open PRs against Infineon while testing.
-2. Prepare a small DEEPCRAFT&trade; Studio project on disk that satisfies the
-   layout enforced by `validate_project_structure()` (at minimum
-   `<Name>.improj`, `Data/`, `README.md`).
+2. Prepare a test project on disk:
+   * **accelerators** &mdash; `accelerator_layout`: `README.md`, `metadata.json`, `<Name>.improj`, `Data/`
+   * **model-zoo-psoc** &mdash; `model_zoo_psoc_layout`: `README.md`, `metadata.json`
 3. From `pr_tool/`, run:
 
    ```bash
-   python ./pr_tool.py --path <path-to-test-project>
+   python ./pr_tool.py --repo accelerators --path <path-to-test-project>
+   python ./pr_tool.py --repo model-zoo-psoc --path <path-to-test-project>
    ```
 
 4. Verify the expected branch, commits, and pull request appear on your test

@@ -1,16 +1,16 @@
 # DEEPCRAFT&trade; Studio Accelerators – Pull Request Tool
 
-A small Python command-line utility that lets DEEPCRAFT&trade; Studio users
-contribute their projects as candidate Accelerators (Starter Models) to the
-[Infineon/deepcraft-studio-accelerators](https://github.com/Infineon/deepcraft-studio-accelerators)
-repository.
+A small Python command-line utility for opening pull requests against Infineon
+DEEPCRAFT&trade; GitHub repositories:
+
+* [Infineon/deepcraft-studio-accelerators](https://github.com/Infineon/deepcraft-studio-accelerators) (`--repo accelerators`)
+* [Infineon/deepcraft-model-zoo-for-psoc](https://github.com/Infineon/deepcraft-model-zoo-for-psoc) (`--repo model-zoo-psoc`)
 
 The tool wraps `git` and the bundled GitHub CLI (`pr_tool/gh.exe`) to automate the whole workflow
 for you:
 
 1. Authenticates using your GitHub account.
-2. Forks `Infineon/deepcraft-studio-accelerators` to your account (or syncs an
-   existing fork).
+2. Forks the selected Infineon repository to your account (or syncs an existing fork).
 3. Creates / switches to a branch named after your project.
 4. Commits and pushes your project's files (splitting large change sets into
    chunks below GitHub's 2 GB per-push limit).
@@ -25,29 +25,41 @@ just re-run it after making changes to your project.
 * **git 2.43** or newer
   * On Windows, git 2.16.2+ is also accepted &mdash; the tool will run
     `update-git-for-windows` automatically to bring it up to date.
-* **GitHub CLI** (`gh`) &mdash; a copy is **bundled** as `pr_tool/gh.exe` and is
-  used automatically. If that file is missing, the tool falls back to `gh` on
-  your `PATH` (install from [cli.github.com](https://cli.github.com/)).
+* **GitHub CLI** (`gh`) &mdash; the copy **bundled** as `pr_tool/gh.exe` is used
+  when present; otherwise `gh` on your `PATH`. Each binary has its own login
+  (install from [cli.github.com](https://cli.github.com/) if needed).
 * A **GitHub account**
 
 No additional Python packages are required &mdash; the tool only uses the
 standard library.
 
-## Project layout requirements
+## Target repositories (`--repo`)
 
-Before running the tool, make sure your project directory has the following
+| `--repo` value | GitHub repository | Project layout |
+| --- | --- | --- |
+| `accelerators` | `Infineon/deepcraft-studio-accelerators` | `accelerator_layout` (DEEPCRAFT&trade; Studio, below) |
+| `model-zoo-psoc` | `Infineon/deepcraft-model-zoo-for-psoc` | `model_zoo_psoc_layout` (README + metadata only) |
+
+Every layout requires **`README.md`** and **`metadata.json`** at the project root.
+Metadata is collected the same way for both repositories.
+
+The `--repo` argument is **required** on every run.
+
+## Project layout requirements (`--repo accelerators`)
+
+Before running the tool for **accelerators**, make sure your project directory has the following
 layout. The tool validates this before doing anything.
 
 **Required items** (must be present at the project root):
 
+* `README.md`
+* `metadata.json`
 * `<ProjectName>.improj`
 * `Data/`
-* `README.md`
 
 **Allowed items** (optional, may be present):
 
 * `*.im*` files (other DEEPCRAFT&trade; Studio files)
-* `metadata.json`
 * `Models/`
 * `PreprocessorTrack/`
 * `Resources/`
@@ -64,13 +76,29 @@ both the **branch name** and the **PR title prefix** on GitHub (e.g.
 `MyAudioClassifier`. You can override it with `--name <CamelCaseName>` if
 the folder name doesn't match the desired project name.
 
+## Project layout requirements (`--repo model-zoo-psoc`)
+
+For the [Model Zoo for PSOC](https://github.com/Infineon/deepcraft-model-zoo-for-psoc),
+the project folder must include **`README.md`** and **`metadata.json`** at its
+root. Other files and folders at the root are allowed (for example deployment
+code, HEX files, or model assets).
+
+The project name defaults to the project folder name and is used as the
+**branch name** on GitHub (for example `ArcFace`, `Yolov8nPose`, or
+`EfficientNetV2-S`). It must be safe for a **local folder name and a Git branch**:
+letters, digits, `.`, `_`, and `-` are allowed; it must start and end with a
+letter or digit; **spaces are not allowed** (and characters such as `\ / : * ? "
+< > | ~ ^ [` are rejected).
+
 ## Usage
 
 From the directory containing `pr_tool.py`, run:
 
 ```bash
-python ./pr_tool.py --path <project-path>
+python ./pr_tool.py --repo <target> --path <project-path>
 ```
+
+where `<target>` is `accelerators` or `model-zoo-psoc`.
 
 where `<project-path>` is the absolute or relative path to the root of your
 DEEPCRAFT&trade; Studio project.
@@ -79,12 +107,14 @@ The first time you run the tool you will be:
 
 1. Prompted to authenticate with GitHub in your browser (only once &ndash;
    credentials are then cached by `gh`).
-2. Asked for project metadata (title, description, algorithm, sensors, and
-   a project image) unless a `metadata.json` already exists in the project,
-   or you pass these as CLI flags.
+2. Shown a **project summary** (target repository, path, branch name, layout)
+   and asked to confirm (**y** / **n**) before continuing.
+3. Asked for project metadata (title, description, algorithm, sensors, and a
+   project image) unless a `metadata.json` already exists in the project, or
+   you pass these as CLI flags.
 
 Once all metadata is collected (or loaded from an existing file), the tool
-shows a summary and asks you to confirm before continuing:
+shows the metadata and asks you to confirm before continuing:
 
 * **y** (yes) &ndash; accept and proceed.
 * **n** (redo) &ndash; restart metadata input. Every field is prompted again
@@ -200,6 +230,7 @@ maintain pull requests for several projects in parallel without conflicts.
 
 | Option | Description |
 | --- | --- |
+| `--repo <target>` | **Required.** `accelerators` or `model-zoo-psoc` (see table above). |
 | `--path <project-path>` | **Required.** Root directory of your project. |
 | `--name <CamelCaseName>` | Override the project name (defaults to the directory name). Also becomes the branch name on GitHub. |
 | `--title <text>` | Project title (max 40 characters). |
@@ -223,6 +254,7 @@ Single sensor:
 
 ```bash
 python ./pr_tool.py \
+  --repo accelerators \
   --path C:\Projects\MyAudioClassifier \
   --title "My audio classifier" \
   --description "Detects three types of household sounds" \
@@ -234,6 +266,7 @@ With a specific image (skips the image prompt entirely):
 
 ```bash
 python ./pr_tool.py \
+  --repo accelerators \
   --path C:\Projects\MyMultiModalDetector \
   --title "Multi-modal detector" \
   --description "Combines audio and motion signals" \
@@ -248,6 +281,7 @@ match):
 
 ```bash
 python ./pr_tool.py \
+  --repo accelerators \
   --path C:\Projects\MyMultiModalDetector \
   --title "Multi-modal detector" \
   --description "Combines audio and motion signals" \
@@ -256,6 +290,18 @@ python ./pr_tool.py \
   --sensor IMU \
   --tag audio \
   --tag motion
+```
+
+Model Zoo for PSOC:
+
+```bash
+python ./pr_tool.py \
+  --repo model-zoo-psoc \
+  --path C:\Projects\ArcFace \
+  --title "ArcFace" \
+  --description "Face recognition model for PSOC" \
+  --algorithm Classification \
+  --sensor Camera
 ```
 
 ## Troubleshooting
@@ -267,15 +313,21 @@ python ./pr_tool.py \
   `pr_tool/` folder next to `pr_tool.py`, or install the GitHub CLI from
   [cli.github.com](https://cli.github.com/) and add it to your `PATH`. At
   startup the tool prints which `gh` binary it is using.
-* **`Project name "..." is not CamelCase`** &mdash; rename the project
-  directory (or pass `--name`) so it uses CamelCase, e.g.
-  `MyAudioClassifier`.
+* **`Project name "..." is not CamelCase`** &mdash; with `--repo accelerators`,
+  rename the project directory (or pass `--name`) to CamelCase (e.g.
+  `MyAudioClassifier`).
+* **Invalid project name (Model Zoo)** &mdash; with `--repo model-zoo-psoc`, the
+  name must be folder- and branch-safe: no spaces; use letters, digits, `.`,
+  `_`, or `-`; start and end with a letter or digit (e.g. `EfficientNetV2-S`).
 * **`Items {...} are missing` / `not allowed in project's root directory`**
   &mdash; adjust your project root so it matches the layout described in
   [Project layout requirements](#project-layout-requirements).
-* **Authentication issues** &mdash; run `gh auth status` to inspect the
-  current state, or `gh auth login` to start fresh. The tool requires the
-  `workflow` scope.
+* **Authentication issues** &mdash; the tool prefers bundled `pr_tool/gh.exe`
+  (each `gh` binary keeps its own login).
+  Run `gh auth status` with the same binary shown at startup. If you are logged
+  in but missing permissions, the tool runs `gh auth refresh` for the
+  `workflow` scope instead of asking for a full login when possible. If the
+  token is invalid, run `gh auth login -h github.com` for that binary.
 * **Your fork is out of sync** &mdash; the tool can recreate your fork
   automatically; it will prompt you to grant the `delete_repo` scope first.
 
