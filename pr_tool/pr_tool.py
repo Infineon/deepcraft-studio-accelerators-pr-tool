@@ -97,10 +97,12 @@ except ValueError as exc:
 
 print_header('Forking & Syncing Repository')
 print('  Checking git version, authenticating, and preparing fork...')
-print()
 
 # Setup git and gh cli
 cli = Cli()
+print(f'  GitHub CLI    : {cli.gh_executable} ({cli.gh_source}, {cli.gh_version()})')
+print()
+
 cli.ensure_git_version()
 git = cli.git
 gh = cli.gh
@@ -221,8 +223,15 @@ try:  # Always remove git_dir after this block
         print('  safe — it will pick up where it left off.')
         print()
         sys.exit(1)
+except KeyboardInterrupt:
+    print_header('Process Aborted')
+    print('  Interrupted by user (Ctrl+C).')
+    print('  Cleaning up temporary git state before exit...')
+    print()
+    sys.exit(130)
 finally:
     # Clean up local git
-    shutil.rmtree(git_dir, onerror=onerror)
-    if not any(git_dir.parent.iterdir()):
+    if git_dir.exists():
+        shutil.rmtree(git_dir, onerror=onerror)
+    if git_dir.parent.exists() and not any(git_dir.parent.iterdir()):
         git_dir.parent.rmdir()

@@ -5,7 +5,7 @@ contribute their projects as candidate Accelerators (Starter Models) to the
 [Infineon/deepcraft-studio-accelerators](https://github.com/Infineon/deepcraft-studio-accelerators)
 repository.
 
-The tool wraps `git` and the GitHub CLI (`gh`) to automate the whole workflow
+The tool wraps `git` and the bundled GitHub CLI (`pr_tool/gh.exe`) to automate the whole workflow
 for you:
 
 1. Authenticates using your GitHub account.
@@ -25,8 +25,9 @@ just re-run it after making changes to your project.
 * **git 2.43** or newer
   * On Windows, git 2.16.2+ is also accepted &mdash; the tool will run
     `update-git-for-windows` automatically to bring it up to date.
-* **GitHub CLI** (`gh`) installed and available on your `PATH`
-  &ndash; see [cli.github.com](https://cli.github.com/)
+* **GitHub CLI** (`gh`) &mdash; a copy is **bundled** as `pr_tool/gh.exe` and is
+  used automatically. If that file is missing, the tool falls back to `gh` on
+  your `PATH` (install from [cli.github.com](https://cli.github.com/)).
 * A **GitHub account**
 
 No additional Python packages are required &mdash; the tool only uses the
@@ -261,9 +262,10 @@ python ./pr_tool.py \
 * **`git version 2.43 or newer is required`** &mdash; install / update git
   from [git-scm.com](https://git-scm.com/). On Windows, the tool will try
   `update-git-for-windows` first.
-* **`gh: command not found`** &mdash; install the GitHub CLI from
-  [cli.github.com](https://cli.github.com/) and make sure it's on your
-  `PATH`.
+* **`GitHub CLI (gh) not found`** &mdash; make sure `gh.exe` is present in the
+  `pr_tool/` folder next to `pr_tool.py`, or install the GitHub CLI from
+  [cli.github.com](https://cli.github.com/) and add it to your `PATH`. At
+  startup the tool prints which `gh` binary it is using.
 * **`Project name "..." is not CamelCase`** &mdash; rename the project
   directory (or pass `--name`) so it uses CamelCase, e.g.
   `MyAudioClassifier`.

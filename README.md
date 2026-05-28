@@ -20,6 +20,7 @@ deepcraft-studio-accelerators-pr-tool/
     ├── README.md          <- end-user usage instructions
     ├── pr_tool.py         <- main script / entry point
     ├── cli.py             <- thin wrapper around `git` and `gh` subprocess calls
+    ├── gh.exe             <- bundled GitHub CLI (used in preference to `PATH`)
     ├── constants.py       <- repo name, base repo, branch, ignored dirs, etc.
     ├── input.py           <- argparse + interactive prompts for project metadata
     ├── image_selector.py  <- picks the best-matching image for a project
@@ -33,7 +34,7 @@ deepcraft-studio-accelerators-pr-tool/
 | File | Responsibility |
 | --- | --- |
 | `pr_tool.py` | Orchestrates the whole flow: parse args, confirm metadata (with redo/abort support), authenticate, fork, clone, branch, commit, push, create/open PR. |
-| `cli.py` | `Cli` class that invokes `git` / `gh` via `subprocess.run`, prints commands and outputs, and enforces a minimum `git` version. |
+| `cli.py` | `Cli` class that invokes `git` / `gh` via `subprocess.run`. Resolves `gh` from bundled `pr_tool/gh.exe` first, then `PATH`. Prints commands and outputs, and enforces a minimum `git` version. |
 | `constants.py` | Centralized configuration: target repo (`Infineon/deepcraft-studio-accelerators`), main branch, local `.git_deepcraft` directory, directories excluded from commits (`Models`, `PreprocessorTrack`), and image catalog settings (`IMAGES_BROWSE_URL`). |
 | `input.py` | `Input` class that parses CLI arguments (`--path`, `--name`, `--title`, `--description`, `--algorithm`, `--sensor`, `--tag`, `--image`, `--override-metadata`) and falls back to interactive prompts. Validates that the project name is CamelCase. Calls `image_selector` to populate `thumbnail_image_id` / `main_image_id` in the generated metadata. Tag values are used only for image selection and are **not** persisted to `metadata.json`. After metadata is collected, the user is asked to confirm, redo (with previous values as defaults), or abort. |
 | `image_selector.py` | Loads the image catalog &mdash; **remote first** from `REMOTE_IMAGES_URL` (derived from `IMAGES_BROWSE_URL` in `constants.py`), falling back to the local `images.json` if the remote fetch fails; the catalog is cached per process via `@functools.cache`. On a successful fetch, mirrors the remote payload to the local file when they differ, so the local copy self-heals after accidental edits (remote is the source of truth). `get_available_tags()` returns the union of tags from the loaded catalog. `select_image()` returns the `name` of the catalog image whose tags best match a list of input tags (case-insensitive). Falls back to `DEFAULT_IMAGE` (`deepcraft.webp`) when no catalog is available, no tags are provided, or no image shares any tag. |
@@ -46,7 +47,7 @@ deepcraft-studio-accelerators-pr-tool/
 * Python 3.10+
 * git 2.43+ (git 2.16.2+ on Windows is also accepted because the tool will
   run `update-git-for-windows` automatically)
-* GitHub CLI (`gh`) installed and on `PATH`
+* GitHub CLI (`gh`) &mdash; bundled as `pr_tool/gh.exe`, with fallback to `gh` on `PATH`
 * A GitHub account
 
 ## Usage (quick reference)
