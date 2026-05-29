@@ -1,143 +1,157 @@
-# DEEPCRAFT&trade; Studio Accelerators – Pull Request Tool
+# DEEPCRAFT&trade; Pull Request Tool
 
-This repository contains the `pr_tool`, a Python command-line utility that lets
-DEEPCRAFT&trade; Studio users contribute their projects as candidate DEEPCRAFT&trade; 
-Studio Accelerator to the
-[Infineon/deepcraft-studio-accelerators](https://github.com/Infineon/deepcraft-studio-accelerators)
-repository.
+This repository ships **`pr_tool`**, a dependency-free Python CLI that helps
+contributors open pull requests against Infineon DEEPCRAFT&trade; GitHub repos:
 
-The tool wraps `git` and the GitHub CLI (`gh`) to automate the entire workflow:
-authentication, forking, cloning, branching, committing, pushing in size-safe
-chunks, and opening the pull request in the browser.
-
-## Repository contents
-
-```
-deepcraft-studio-accelerators-pr-tool/
-├── .gitignore
-├── README.md              <- you are here
-└── pr_tool/               <- the tool itself (entry point + modules)
-    ├── README.md          <- end-user usage instructions
-    ├── pr_tool.py         <- main script / entry point
-    ├── cli.py             <- thin wrapper around `git` and `gh` subprocess calls
-    ├── gh.exe             <- bundled GitHub CLI (used in preference to `PATH`)
-    ├── constants.py       <- repo name, base repo, branch, ignored dirs, etc.
-    ├── input.py           <- argparse + interactive prompts for project metadata
-    ├── image_selector.py  <- picks the best-matching image for a project
-    ├── images.json        <- catalog of candidate project images and their tags
-    ├── utils.py           <- helpers (file grouping for 2 GB push limit, etc.)
-    └── validation.py      <- checks the project directory structure
-```
-
-### Module overview
-
-| File | Responsibility |
+| `--repo` | Target |
 | --- | --- |
-| `pr_tool.py` | Orchestrates the whole flow: parse args, confirm metadata (with redo/abort support), authenticate, fork, clone, branch, commit, push, create/open PR. |
-| `cli.py` | `Cli` class that invokes `git` / `gh` via `subprocess.run`. Resolves `gh` from bundled `pr_tool/gh.exe` first, then `PATH`. Prints commands and outputs, and enforces a minimum `git` version. |
-| `constants.py` | `TARGET_REPOS` registry and shared settings (branch, `.git_deepcraft`, icons). |
-| `target_repo.py` | `TargetRepo` dataclass (repo URL, PR title template, layout key, ignored dirs). |
-| `project_layouts.py` | Modular layout validators (`accelerator_layout`, `model_zoo_psoc_layout`); all require `README.md` and `metadata.json`. |
-| `input.py` | `Input` class: CLI parsing, metadata collection, layout-based project name validation. |
-| `image_selector.py` | Loads the image catalog from local `images.json` (cached per process via `@functools.cache`). `get_available_tags()` returns the union of tags from the catalog. `select_image()` returns the `name` of the catalog image whose tags best match a list of input tags (case-insensitive). Falls back to `DEFAULT_IMAGE` (`deepcraft.webp`) when no catalog is available, no tags are provided, or no image shares any tag. |
-| `images.json` | JSON array of `{name, tags}` objects shipped with the tool. Used by `image_selector.py` for tag-based auto-selection and the interactive image picker. |
-| `utils.py` | `group_files()` splits the change set into chunks below GitHub's 2 GB per-push limit, plus a small `handle_readonly` helper used when cleaning up the working tree. |
-| `validation.py` | `validate_project_structure()` delegates to the layout registered on the target repo. |
+| `accelerators` | [deepcraft-studio-accelerators](https://github.com/Infineon/deepcraft-studio-accelerators) |
+| `model-zoo-psoc` | [deepcraft-model-zoo-for-psoc](https://github.com/Infineon/deepcraft-model-zoo-for-psoc) |
 
-## Requirements
+**End users:** see [`pr_tool/README.md`](pr_tool/README.md) for full usage,
+options, project layouts, and troubleshooting.
 
-* Python 3.10+
-* git 2.43+ (git 2.16.2+ on Windows is also accepted because the tool will
-  run `update-git-for-windows` automatically)
-* GitHub CLI (`gh`) &mdash; bundled as `pr_tool/gh.exe`, with fallback to `gh` on `PATH`
-* A GitHub account
+**Requirements:** Python 3.10+, git 2.43+ (2.16.2+ on Windows), GitHub CLI
+(bundled `pr_tool/gh.exe` or on `PATH`).
 
-## Usage (quick reference)
+### Quick usage
 
-End-user instructions live in [`pr_tool/README.md`](pr_tool/README.md). In
-short, from the `pr_tool/` directory:
+From `pr_tool/`, run the tool against whichever target repo fits your project
+and point `--path` at your project folder on disk:
 
 ```bash
-python ./pr_tool.py --repo accelerators --path <project-path>
+cd pr_tool
+python ./pr_tool.py --repo <target> --path <project-path>
 ```
 
-Run `python ./pr_tool.py --help` to see all flags.
+Replace `<target>` with `accelerators` or `model-zoo-psoc`. The tool handles
+GitHub auth, fork sync, branching, push, and opens the PR in your browser.
 
-## Making changes to the tool
+## File reference
 
-The tool is a small, dependency-free Python project. Working on it should be
-straightforward:
+| Path | Description |
+| --- | --- |
+| **`README.md`** | Maintainer guide (this file): architecture, extension points, testing, contributing. |
+| **`.gitignore`** | Ignores local scratch, virtual environments, and OS artefacts. |
+| **`scripts/parse_master_json.py`** | Fetches the DEEPCRAFT AI Hub `master.json` (or reads a local copy) and prints unique catalog values for `domain`, `application`, `use_case`, `kit`, `device`, and brand fields. Use the output to update `metadata/choices.py` manually. |
+| **`pr_tool/README.md`** | End-user documentation: step-by-step usage, metadata behaviour, CLI flags, examples, troubleshooting. |
+| **`pr_tool/pr_tool.py`** | Main entry point. Orchestrates project summary, metadata collection/review, git/gh setup, fork sync, sparse clone, chunked push, and PR creation. Validates registries at import time. |
+| **`pr_tool/cli.py`** | `Cli` class wrapping `git` and `gh` subprocess calls. Resolves bundled vs system `gh`, enforces minimum git version, handles auth refresh, and prints commands when `--verbose` is set. |
+| **`pr_tool/constants.py`** | Shared settings: `TARGET_REPOS` registry, git/GitHub defaults, UI icons, column padding for choice prompts. |
+| **`pr_tool/target_repo.py`** | `TargetRepo` dataclass (repo name, PR title template, layout key, ignored push dirs) and registry validation against known layouts. |
+| **`pr_tool/project_layouts.py`** | Project folder validators registered in `LAYOUTS`. `accelerator_layout` enforces DEEPCRAFT Studio structure and CamelCase names; `model_zoo_psoc_layout` requires README + metadata with branch-safe names. |
+| **`pr_tool/input.py`** | Argparse setup, `--repo` / `--path` / metadata CLI flags, and `Input.collect_metadata()` delegating to the metadata engine. |
+| **`pr_tool/validation.py`** | Validates project layout before publish and loaded `metadata.json` against the active schema (missing fields, choice violations, derived-field repair). |
+| **`pr_tool/image_selector.py`** | Loads `images.json`, exposes available tags/images, and picks the best tag overlap for auto-selection (fallback `deepcraft.webp`). |
+| **`pr_tool/images.json`** | Shipped catalog of `{name, tags}` entries used for thumbnail/main image selection. |
+| **`pr_tool/utils.py`** | `group_files()` splits diffs into push chunks under GitHub's 2 GB limit; readonly cleanup helper for git scratch removal. |
+| **`pr_tool/gh.exe`** | Bundled GitHub CLI for Windows (preferred over `PATH` when present). |
+| **`pr_tool/LICENSE`** | License text for the tool distribution. |
+| **`pr_tool/metadata/__init__.py`** | Public metadata API: `collect_metadata`, `finalize_metadata`, `format_metadata_json`, `get_metadata_schema`. |
+| **`pr_tool/metadata/schema.py`** | `FieldSpec` and `MetadataSchema` types, field kinds, CLI flag registration per field. |
+| **`pr_tool/metadata/schemas.py`** | Per-repo metadata schemas (`SCHEMAS`). Defines field order and composition for accelerators vs model-zoo (`_SHARED_FIELDS`, algorithm, links, metrics). |
+| **`pr_tool/metadata/choices.py`** | Suggested values (sensors, domain, kit, …), brand definitions, kit→device and type→workflow mappings, and link builders for each repo. |
+| **`pr_tool/metadata/engine.py`** | Walks the schema to collect metadata interactively: derived device/workflow, brand handling, link generation, schema-ordered output. |
+| **`pr_tool/metadata/prompts.py`** | Interactive prompts (`input_str`, `input_choice`, `input_choices`, confirmations) including custom-value title-casing. |
+| **`pr_tool/metadata/format.py`** | Pretty-prints `metadata.json` with keys in schema order. |
+| **`pr_tool/metadata/image_field.py`** | Interactive and CLI-driven project image selection (`--image`, `--tag`, or pick from catalog). |
 
-### 1. Clone and set up
+At startup, `pr_tool.py` checks that **`TARGET_REPOS` keys match `SCHEMAS`**
+and that each target uses a registered **project layout**.
 
-```bash
-git clone https://github.com/<your-org>/deepcraft-studio-accelerators-pr-tool.git
-cd deepcraft-studio-accelerators-pr-tool
+## Extending the tool
+
+### How the pieces connect
+
+```
+constants.py          TARGET_REPOS   (--repo key → GitHub repo + layout)
+       ↓
+metadata/schemas.py   SCHEMAS        (same key → metadata.json fields)
+       ↓
+project_layouts.py    LAYOUTS        (layout name → folder rules)
+metadata/choices.py   tuples         (prompt suggestions + derivations)
 ```
 
-A virtual environment is recommended but not required since the tool currently
-has no third-party dependencies (it only uses the Python standard library plus
-the external `git` and `gh` binaries):
+| Goal | Primary files |
+| --- | --- |
+| New `--repo` target | `constants.py`, `metadata/schemas.py`, `project_layouts.py` |
+| Metadata fields / order | `metadata/schemas.py` |
+| Choice lists, brands, links | `metadata/choices.py` |
+| Sync lists from AI Hub | `scripts/parse_master_json.py` → copy into `choices.py` |
+| Folder / name rules | `project_layouts.py` |
+| New field *kind* (rare) | `metadata/schema.py`, `engine.py`, `validation.py` |
+| Git / PR flow | `pr_tool.py`, `cli.py` |
 
-```bash
-python -m venv .venv
-# Windows
-.\.venv\Scripts\activate
-# macOS / Linux
-source .venv/bin/activate
-```
+### Add a target repository
 
-### 2. Where to make your change
+1. **`constants.py`** — add a `TargetRepo` to `TARGET_REPOS` (`key`, `repo_name`, `label`, `pr_title_template`, `project_layout`, `git_ignored_dirs`).
+2. **`metadata/schemas.py`** — add a `MetadataSchema` with the same `repo_key`; register in `SCHEMAS`.
+3. **`project_layouts.py`** — add or reuse a layout in `LAYOUTS`.
 
-Pick the module that owns the behavior you want to change:
+Keys in `TARGET_REPOS` and `SCHEMAS` must match 1:1 or the tool exits on startup.
 
-* **New CLI flag or interactive prompt** &rarr; `pr_tool/input.py`
-* **Add or change a target repository** &rarr; `pr_tool/constants.py` (`TARGET_REPOS`) and `pr_tool/target_repo.py`
-* **Add or change a project layout** &rarr; `pr_tool/project_layouts.py` (`LAYOUTS`)
-* **Change a `git` / `gh` invocation, error handling, or version check** &rarr; `pr_tool/cli.py`
-* **Change the required / allowed project layout** &rarr; `pr_tool/validation.py`
-* **Change push chunking or filesystem helpers** &rarr; `pr_tool/utils.py`
-* **Add or update the catalog of project images** &rarr; edit `pr_tool/images.json` (`name` and `tags` per entry).
-* **Change the image selection algorithm** &rarr; `pr_tool/image_selector.py`
-* **Change the overall fork / clone / commit / PR sequence** &rarr; `pr_tool/pr_tool.py`
+### Add or change a metadata schema
 
-Keep the runtime dependency surface minimal. If a change really needs a
-third-party package, add a `requirements.txt` in the same PR and document it
-here.
+Edit `metadata/schemas.py`. Fields are `FieldSpec(key, label, kind, …)`; **tuple order = `metadata.json` key order**.
 
-### 3. Test locally
+| Kind | Role |
+| --- | --- |
+| `text`, `long_text` | Free text |
+| `single_choice`, `multi_choice` | From `choices=`; optional `cli_flag` |
+| `derived_workflow` | Auto from `type` |
+| `image` / `image_mirror` | Thumbnail; mirror sets `main_image_id` |
+| `brand` | Sets `brand_image_id` + `brand_url` |
+| `accelerator_links`, `model_zoo_psoc_links` | Auto link arrays |
+| `metrics` | Optional labelled metrics (model-zoo) |
 
-Because the tool talks to GitHub, it's easiest to validate changes against
-your own fork of the target repository:
+### Update choice lists
 
-1. Temporarily point `BASE_REPO_OWNER` in `pr_tool/constants.py` at your own
-   GitHub user/org so you don't open PRs against Infineon while testing.
-2. Prepare a test project on disk:
-   * **accelerators** &mdash; `accelerator_layout`: `README.md`, `metadata.json`, `<Name>.improj`, `Data/`
-   * **model-zoo-psoc** &mdash; `model_zoo_psoc_layout`: `README.md`, `metadata.json`
-3. From `pr_tool/`, run:
+Edit tuples in `metadata/choices.py`, or run `python scripts/parse_master_json.py` to list current AI Hub values and copy what you need. Update `KIT_TO_DEVICE` when adding kits; add `Brand` entries for new partners.
+
+### Add a project layout
+
+Subclass `ProjectLayout` in `project_layouts.py`, register in `LAYOUTS`, reference from `TargetRepo.project_layout`.
+
+## Testing locally
+
+1. **Clone and optional venv**
 
    ```bash
-   python ./pr_tool.py --repo accelerators --path <path-to-test-project>
-   python ./pr_tool.py --repo model-zoo-psoc --path <path-to-test-project>
+   git clone <this-repo-url>
+   cd deepcraft-studio-accelerators-pr-tool
+   python -m venv .venv
+   # Windows: .\.venv\Scripts\activate
+   # macOS/Linux: source .venv/bin/activate
    ```
 
-4. Verify the expected branch, commits, and pull request appear on your test
-   repo.
-5. Revert `constants.py` before committing.
+2. **Prepare a test project** on disk that matches the target layout:
+   * **accelerators** — `README.md`, `metadata.json`, `<Name>.improj`, `Data/`; CamelCase name.
+   * **model-zoo-psoc** — `README.md`, `metadata.json`; branch-safe folder name.
 
-The tool prints every `git` and `gh` command it runs (see
-`Cli.run` in `cli.py`), which is the primary debugging aid.
+3. **Run against your fork** (recommended so you do not open PRs against Infineon while developing):
+   * Temporarily set `BASE_REPO_OWNER` in `constants.py` to your GitHub user/org.
+   * Run from `pr_tool/` with verbose output:
 
-### 4. Submit a pull request
+     ```bash
+     python ./pr_tool.py --repo <target> --path <test-project-path> -v
+     ```
 
-1. Create a feature branch.
-2. Commit focused, descriptive changes.
-3. Open a pull request against `main` of this repository describing what you
-   changed and how you tested it.
+   * Confirm metadata, push, and PR creation behave as expected for your change.
+
+4. **Revert test-only edits** (especially `BASE_REPO_OWNER`) before committing.
+
+Use `-v` to see every `git` and `gh` command; that is the first place to look when something fails.
+
+## Submitting changes to this repository
+
+When you have modified the PR tool itself:
+
+1. Create a feature branch from `main`.
+2. Commit focused changes with a clear message (what and why).
+3. Open a pull request against `main` of **this** repository (`deepcraft-studio-accelerators-pr-tool`), not the Infineon target repos.
+4. In the PR description, summarise the change and how you tested it (target repo used, commands run, edge cases checked).
+5. If you added a `--repo` target, new metadata fields, or layout rules, note any follow-up needed on the Infineon side (catalog updates, hub changes, etc.).
 
 ## License
 
-See the upstream
-[Infineon/deepcraft-studio-accelerators](https://github.com/Infineon/deepcraft-studio-accelerators)
-repository for licensing of the Accelerator content this tool helps publish.
+See the upstream Infineon target repositories for licensing of published content.

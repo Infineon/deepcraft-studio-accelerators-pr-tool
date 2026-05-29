@@ -101,61 +101,47 @@ From the directory containing `pr_tool.py`, run:
 python ./pr_tool.py --repo <target> --path <project-path>
 ```
 
-where `<target>` is `accelerators` or `model-zoo-psoc`.
-
-where `<project-path>` is the absolute or relative path to the root of your
-DEEPCRAFT&trade; Studio project.
+`<target>` is `accelerators` or `model-zoo-psoc`. `<project-path>` is the
+root of your project folder.
 
 The first time you run the tool you will be:
 
 1. Prompted to authenticate with GitHub in your browser (only once &ndash;
    credentials are then cached by `gh`).
-2. Shown a **project summary** (target repository, path, branch name, layout)
-   and asked to confirm (**y** / **n**) before continuing.
-3. Asked for project metadata (title, description, algorithm, sensors, and a
-   project image) unless a `metadata.json` already exists in the project, or
-   you pass these as CLI flags.
+2. Shown a **project summary** and asked to confirm before continuing.
+3. Asked for **metadata** (unless `metadata.json` already exists and you did
+   not pass `--override-metadata`). A few fields can be set via CLI flags on
+   the first pass; the rest are prompted interactively.
 
-Once all metadata is collected (or loaded from an existing file), the tool
-shows the metadata and asks you to confirm before continuing:
+When metadata is ready, the tool shows a preview and asks:
 
-* **y** (yes) &ndash; accept and proceed.
-* **n** (redo) &ndash; restart metadata input. Every field is prompted again
-  but the previous values are shown as defaults, so you can press Enter to
-  keep a field and only retype the ones you want to change.
-* **a** (abort) &ndash; exit immediately without writing anything.
+* **y** &ndash; accept and proceed (`metadata.json` is saved immediately,
+  before any git or GitHub steps).
+* **n** &ndash; re-enter metadata (previous values are kept as defaults).
+* **a** &ndash; abort without saving.
 
-When the push completes, your default browser opens the pull request page on
-`Infineon/deepcraft-studio-accelerators` so you can review and submit it.
+When the push completes, your browser opens the pull request page so you can
+review and submit it.
 
-### Interactive metadata prompts
+### Interactive metadata
 
-When the tool needs metadata it does not have, it asks you for it on the
-command line. The prompts behave as follows:
+Prompt order and field names follow the schema in `metadata/schemas.py` for
+the selected `--repo`.
 
-* **Title and description** &ndash; free-form text with a maximum length.
-  Empty input is rejected and the prompt repeats until you provide a value
-  that fits within the limit.
-* **Algorithm** &ndash; pick exactly one option by typing its number from
-  the displayed list, or type a custom name. If you type something that is
-  not in the suggested list, the tool asks you to confirm before using it.
-* **Sensors** &ndash; pick one or more options by typing a comma-separated
-  list of numbers and/or names (for example `1, 3, MyCustomSensor`). Each
-  custom name is confirmed individually, and duplicates are removed
-  automatically. At least one sensor must be selected.
-* **Project image** &ndash; choose between two methods:
-  1. **Auto-select based on tags** &ndash; pick one or more domain tags
-     (for example `smart home`, `audio`, `automotive`) and the tool selects
-     the image whose tags best match. If nothing matches, `deepcraft.webp`
-     is used as default.
-  2. **Pick from available images** &ndash; choose one by number or name from
-     the catalog listed in the prompt (defined in `pr_tool/images.json`).
+| Topic | Behaviour |
+| --- | --- |
+| **Choices** (sensors, domain, kit, …) | Pick by number, or type a custom value (one confirmation). Custom text is title-cased (`smart home` → `Smart Home`). |
+| **Kit → device** | Device is derived from kit(s); custom kit names prompt for device. |
+| **Type → workflow** | Pick one or both types (`1,2`); workflow is set automatically. |
+| **Brand** | Infineon, a listed partner, or **New Brand/Partner** (custom image + URL). |
+| **Links** | Filled automatically (accelerators: Studio + GitHub; model-zoo: GitHub). |
+| **Image** | Auto-pick from `images.json` by tags, or choose interactively. `--image` / `--tag` skip the prompt. |
+| **Accelerators only** | `algorithm` required. |
+| **Model zoo only** | `metrics` optional (fixed labels, you enter values). |
 
-  The selected image name is written to the `thumbnail_image_id` and
-  `main_image_id` fields of `metadata.json`. You can also skip this prompt
-  entirely by passing `--image <name>` or `--tag <tag>` on the command
-  line.
-
+All fields are required except `metrics` on `model-zoo-psoc`. Loading an
+existing `metadata.json` prompts for anything missing; values outside the
+suggested lists show a warning but you can proceed.
 
 ### Updating an existing pull request
 
@@ -163,7 +149,7 @@ To push new changes to a pull request you already opened, **just re-run the
 exact same command on the same project folder**:
 
 ```bash
-python ./pr_tool.py --path <project-path>
+python ./pr_tool.py --repo <target> --path <project-path>
 ```
 
 What happens under the hood:
@@ -187,13 +173,9 @@ Things to watch out for:
   different branch and open a **new** pull request alongside the old one.
 * **If the pull request was closed on GitHub**, the next run will not reopen
   it &ndash; it creates a fresh pull request on the same branch.
-* **Changing metadata on a subsequent run.** The tool never modifies an
-  existing `metadata.json`, so you have two options:
-  * Edit `metadata.json` directly in your project and re-run the tool &ndash;
-    the modified file is committed and pushed like any other change.
-  * Or pass `--override-metadata` together with the new values (or let the
-    tool prompt you interactively) to have the tool regenerate the file for
-    you.
+* **Changing metadata on a subsequent run** &ndash; edit `metadata.json`
+  directly and re-run (changes are pushed like any other file), or use
+  `--override-metadata` to regenerate it interactively.
 
 ### The `.git_deepcraft` folder
 
@@ -239,7 +221,7 @@ that run finishes.
 | `--name <CamelCaseName>` | Override the project name (defaults to the directory name). Also becomes the branch name on GitHub. |
 | `--title <text>` | Project title (max 40 characters). |
 | `--description <text>` | Short project description (max 100 characters). |
-| `--algorithm <name>` | Supervised learning algorithm. Suggested values: `Classification`, `Regression`, `Object Detection`. |
+| `--algorithm <name>` | Accelerators only. `Classification`, `Regression`, or `Object Detection`. |
 | `--sensor <name>` | Target sensor. Run `--help` to see the suggested list. Can be passed multiple times (e.g. `--sensor Microphone --sensor Camera`) to specify more than one sensor. |
 | `--image <name>` | Image name to use directly (e.g. `Audio.png`). Skips the tag-based auto-selection and the interactive image prompt. |
 | `--tag <tag>` | Tag used to auto-pick a project image. Can be passed multiple times (e.g. `--tag audio --tag "smart home"`). Skips the interactive image prompt but not the auto-selection step. Not saved to `metadata.json`. |
@@ -304,7 +286,6 @@ python ./pr_tool.py \
   --path C:\Projects\ArcFace \
   --title "ArcFace" \
   --description "Face recognition model for PSOC" \
-  --algorithm Classification \
   --sensor Camera
 ```
 

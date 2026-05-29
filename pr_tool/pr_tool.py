@@ -23,10 +23,12 @@ from constants import (
     MAIN_BRANCH,
     TARGET_REPOS,
 )
-from input import Input, confirm, confirm_metadata
+from input import Input, confirm
+from metadata import confirm_metadata, finalize_metadata, format_metadata_json, get_metadata_schema
 from target_repo import validate_target_repos_registry
 from utils import group_files
-from validation import validate_project_structure
+from validation import validate_loaded_metadata, validate_project_structure
+from metadata.schemas import validate_metadata_schemas
 
 def onerror(func, path, exc_info):
     import stat
@@ -56,17 +58,6 @@ def fork(base_repo: str) -> None:
     time.sleep(2)  # Wait for repo to be created
 
 
-def format_metadata_json(metadata: dict) -> str:
-    """Pretty-print metadata: one field per line, list values kept inline."""
-    if not metadata:
-        return '{}'
-    entries = [
-        f'  {json.dumps(key)}: {json.dumps(value)}'
-        for key, value in metadata.items()
-    ]
-    return '{\n' + ',\n'.join(entries) + '\n}\n'
-
-
 def print_header(title: str, *, icon: str = '') -> None:
     sep = '=' * 60
     label = f'{icon} {title}' if icon else title
@@ -77,6 +68,7 @@ def print_header(title: str, *, icon: str = '') -> None:
 
 # ── Tool start ────────────────────────────────────────────────
 validate_target_repos_registry(TARGET_REPOS)
+validate_metadata_schemas(set(TARGET_REPOS))
 
 try:
     args = Input()
@@ -124,16 +116,32 @@ try:
             metadata = json.loads(metadata_path.read_text(encoding='utf-8'))
         except (OSError, json.JSONDecodeError) as exc:
             raise ValueError(f'Could not read existing {metadata_path}: {exc}') from exc
+        metadata = validate_loaded_metadata(
+            metadata,
+            get_metadata_schema(args.repo_key),
+            lambda current, field_keys: args.collect_metadata(
+                use_cli_args=False,
+                previous=current,
+                only_fields=field_keys,
+            ),
+        )
     else:
         metadata = None
 
     # Metadata review / collection
+    metadata_schema = get_metadata_schema(args.repo_key)
     print_header('Metadata Collection', icon=ICON_INFO)
     while metadata:
+        metadata = finalize_metadata(metadata, metadata_schema)
         print('\nProject metadata.json overview:')
         print(format_metadata_json(metadata).rstrip('\n'))
         answer = confirm_metadata()
         if answer == 'yes':
+            metadata_path.write_text(
+                format_metadata_json(metadata),
+                encoding='utf-8',
+            )
+            print(f'{ICON_SUCCESS} Saved metadata.json')
             break
         if answer == 'abort':
             print(f'{ICON_ABORT} Aborted by user.')
@@ -141,9 +149,6 @@ try:
         print(f'{ICON_INFO} Restarting metadata collection... (press Enter to keep previous values)')
         args.metadata = args.collect_metadata(use_cli_args=False, previous=metadata)
         metadata = args.metadata
-    if args.metadata:
-        metadata_path.write_text(format_metadata_json(args.metadata), encoding='utf-8')
-
     validate_project_structure(project_name, project_path, target_repo)
 except ValueError as exc:
     print(f'{ICON_ERROR} Error: {exc}', file=sys.stderr)
