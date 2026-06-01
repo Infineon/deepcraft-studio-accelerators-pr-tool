@@ -3,7 +3,10 @@ import re
 from abc import ABC, abstractmethod
 from pathlib import Path
 
+from submission_exclusions import is_excluded_project_root_entry
+
 COMMON_ROOT_FILES = ('README.md', 'metadata.json')
+
 _CAMEL_CASE_PATTERN = re.compile(r'(?:[A-Z][a-z]*)+')
 _FOLDER_BRANCH_SAFE_PATTERN = re.compile(r'^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$')
 _WINDOWS_RESERVED_NAMES = frozenset({
@@ -79,7 +82,12 @@ class AcceleratorLayout(ProjectLayout):
         allowed_root_items: list[str] = []
         for pattern in required_items | allowed_items | set(COMMON_ROOT_FILES):
             allowed_root_items += fnmatch.filter(project_root_items, pattern)
-        if not_allowed_items := project_root_items - set(allowed_root_items):
+        excluded_root_items = {
+            name for name in project_root_items if is_excluded_project_root_entry(project_path, name)
+        }
+        if not_allowed_items := (
+            project_root_items - set(allowed_root_items) - excluded_root_items
+        ):
             raise ValueError(
                 f'Items {not_allowed_items} are not allowed in project\'s root directory;\n'
                 f'Allowed items are {required_items | allowed_items | set(COMMON_ROOT_FILES)}'

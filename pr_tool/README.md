@@ -70,7 +70,8 @@ layout. The tool validates this before doing anything.
 * `Units/`
 
 Anything else at the project root will cause the tool to fail with a clear
-error message. The `Models/` and `PreprocessorTrack/` directories are tracked
+error message (see [Local git and Python environments](#local-git-and-python-environments)).
+The `Models/` and `PreprocessorTrack/` directories are tracked
 in your project but are **not** pushed to GitHub.
 
 The project name **defaults to the project folder's name** and is used as
@@ -92,6 +93,13 @@ The project name defaults to the project folder name and is used as the
 letters, digits, `.`, `_`, and `-` are allowed; it must start and end with a
 letter or digit; **spaces are not allowed** (and characters such as `\ / : * ? "
 < > | ~ ^ [` are rejected).
+
+## Local git and Python environments
+
+Your project folder may already be a git repo or contain a Python virtual
+environment. That is fine: local git data, virtualenvs, and typical Python
+cache folders are **not** uploaded. With `--repo accelerators`, they are also
+ignored when the tool checks the project root layout.
 
 ## Usage
 
@@ -311,7 +319,9 @@ python ./pr_tool.py \
   `_`, or `-`; start and end with a letter or digit (e.g. `EfficientNetV2-S`).
 * **`Items {...} are missing` / `not allowed in project's root directory`**
   &mdash; adjust your project root so it matches the layout described in
-  [Project layout requirements](#project-layout-requirements).
+  [Project layout requirements](#project-layout-requirements-repo-accelerators)
+  (`--repo accelerators` only). Git and Python artefacts are excluded; see
+  [Local git and Python environments](#local-git-and-python-environments).
 * **Authentication issues** &mdash; the tool prefers bundled `pr_tool/gh.exe`
   (each `gh` binary keeps its own login).
   Run `gh auth status` with the same binary shown at startup. If you are logged

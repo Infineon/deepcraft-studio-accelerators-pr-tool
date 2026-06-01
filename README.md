@@ -39,7 +39,8 @@ GitHub auth, fork sync, branching, push, and opens the PR in your browser.
 | **`pr_tool/cli.py`** | `Cli` class wrapping `git` and `gh` subprocess calls. Resolves bundled vs system `gh`, enforces minimum git version, handles auth refresh, and prints commands when `--verbose` is set. |
 | **`pr_tool/constants.py`** | Shared settings: `TARGET_REPOS` registry, git/GitHub defaults, UI icons, column padding for choice prompts. |
 | **`pr_tool/target_repo.py`** | `TargetRepo` dataclass (repo name, PR title template, layout key, ignored push dirs) and registry validation against known layouts. |
-| **`pr_tool/project_layouts.py`** | Project folder validators registered in `LAYOUTS`. `accelerator_layout` enforces DEEPCRAFT Studio structure and CamelCase names; `model_zoo_psoc_layout` requires README + metadata with branch-safe names. |
+| **`pr_tool/project_layouts.py`** | Project folder validators registered in `LAYOUTS` (accelerators vs model-zoo). |
+| **`pr_tool/submission_exclusions.py`** | Git/Python paths excluded from layout checks and PR push (`pyvenv.cfg` / `conda-meta/` detection). |
 | **`pr_tool/input.py`** | Argparse setup, `--repo` / `--path` / metadata CLI flags, and `Input.collect_metadata()` delegating to the metadata engine. |
 | **`pr_tool/validation.py`** | Validates project layout and loaded `metadata.json` (missing fields, values outside AI Hub suggested lists with optional continue, derived-field repair). |
 | **`pr_tool/image_selector.py`** | Loads `images.json`, exposes available tags/images, and picks the best tag overlap for auto-selection (fallback `deepcraft.webp`). |
@@ -64,13 +65,21 @@ and that each target uses a registered **project layout**.
 ### How the pieces connect
 
 ```
-constants.py          TARGET_REPOS   (--repo key → GitHub repo + layout)
+constants.py              TARGET_REPOS   (--repo key → GitHub repo + layout)
        ↓
-metadata/schemas.py   SCHEMAS        (same key → metadata.json fields)
+metadata/schemas.py       SCHEMAS        (same key → metadata.json fields)
        ↓
-project_layouts.py    LAYOUTS        (layout name → folder rules)
-metadata/choices.py   tuples         (prompt suggestions + derivations)
+project_layouts.py        LAYOUTS        (layout name → folder rules)
+submission_exclusions.py  filters        (git/Python artefacts → layout + push)
+metadata/choices.py       tuples         (prompt suggestions + derivations)
 ```
+
+`submission_exclusions.py` is separate from `project_layouts.py` and
+`validation.py`: it defines which paths are ignored when validating the
+accelerator project root and which paths are never committed or pushed (for
+example `.git`, `__pycache__`, `.venv`, `*.pyc`). Virtual environments are
+found by walking the tree for `pyvenv.cfg` or `conda-meta/`, not only by
+folder name.
 
 | Goal | Primary files |
 | --- | --- |
@@ -79,6 +88,7 @@ metadata/choices.py   tuples         (prompt suggestions + derivations)
 | Choice lists, brands, links | `metadata/choices.py` |
 | Sync lists from AI Hub | `scripts/parse_master_json.py` → copy into `choices.py` |
 | Folder / name rules | `project_layouts.py` |
+| Git/Python paths excluded from push | `submission_exclusions.py` |
 | New field *kind* (rare) | `metadata/schema.py`, `engine.py`, `validation.py` |
 | Git / PR flow | `pr_tool.py`, `cli.py` |
 
@@ -110,7 +120,12 @@ Edit tuples in `metadata/choices.py`, or run `python scripts/parse_master_json.p
 
 ### Add a project layout
 
-Subclass `ProjectLayout` in `project_layouts.py`, register in `LAYOUTS`, reference from `TargetRepo.project_layout`.
+Subclass `ProjectLayout` in `project_layouts.py`, register in `LAYOUTS`, reference from `TargetRepo.project_layout`. For accelerators, root allow-list checks call `is_excluded_project_root_entry()` from `submission_exclusions.py` so git/Python artefacts do not fail validation.
+
+### Change publish exclusions
+
+Edit `EXCLUDED_NAMES` and `EXCLUDED_FILE_GLOBS` in `submission_exclusions.py`.
+`pr_tool.py` uses `filter_submission_paths()` and `build_submission_exclude_pathspecs()` when building commits; layouts import only what they need for root checks.
 
 ## Testing locally
 
@@ -127,6 +142,9 @@ Subclass `ProjectLayout` in `project_layouts.py`, register in `LAYOUTS`, referen
 2. **Prepare a test project** on disk that matches the target layout:
    * **accelerators** — `README.md`, `metadata.json`, `<Name>.improj`, `Data/`; CamelCase name.
    * **model-zoo-psoc** — `README.md`, `metadata.json`; branch-safe folder name.
+
+   A test folder may also be a local git repo or contain a venv; those paths are
+   excluded from push and (for accelerators) from root layout validation.
 
 3. **Run against your fork** (recommended so you do not open PRs against Infineon while developing):
    * Temporarily set `BASE_REPO_OWNER` in `constants.py` to your GitHub user/org.

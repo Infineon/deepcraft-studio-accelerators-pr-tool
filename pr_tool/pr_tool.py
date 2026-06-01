@@ -25,6 +25,10 @@ from constants import (
 )
 from input import Input, confirm
 from metadata import confirm_metadata, finalize_metadata, format_metadata_json, get_metadata_schema
+from submission_exclusions import (
+    build_submission_exclude_pathspecs,
+    filter_submission_paths,
+)
 from target_repo import validate_target_repos_registry
 from utils import group_files
 from validation import validate_loaded_metadata, validate_project_structure
@@ -231,7 +235,11 @@ try:  # Always remove git_dir after this block
     try:
         # Handle deletions
         ignore_paths = [f':^{project_path / dir}' for dir in target_repo.git_ignored_dirs]
-        diff_names_deleted = git(['diff', '--name-only', '--diff-filter=D', '--relative', '--', str(project_path), *ignore_paths], stdout=PIPE)
+        ignore_paths.extend(build_submission_exclude_pathspecs(project_path))
+        diff_names_deleted = filter_submission_paths(
+            git(['diff', '--name-only', '--diff-filter=D', '--relative', '--', str(project_path), *ignore_paths], stdout=PIPE),
+            project_path,
+        )
         if diff_names_deleted:
             with NamedTemporaryFile('w', delete=False) as pathspec:
                 pathspec.write(diff_names_deleted)
@@ -240,7 +248,10 @@ try:  # Always remove git_dir after this block
                 os.remove(pathspec.name)
         # Divide push to groups, each with a size less than 2GB
         git(['add', '--intent-to-add', '--', project_name, *ignore_paths])
-        diff_names = git(['diff', '--name-only', '--relative', '--', str(project_path), *ignore_paths], stdout=PIPE)
+        diff_names = filter_submission_paths(
+            git(['diff', '--name-only', '--relative', '--', str(project_path), *ignore_paths], stdout=PIPE),
+            project_path,
+        )
         gh_push_limit = (2 * 1024 * 1024 * 1024)  # 2 GB
         file_groups = list(group_files(repo_root, diff_names, gh_push_limit - 1)) if diff_names else []
         if file_groups:
