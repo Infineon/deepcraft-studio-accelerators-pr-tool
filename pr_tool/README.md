@@ -125,12 +125,13 @@ review and submit it.
 
 ### Interactive metadata
 
-Prompt order and field names follow the schema in `metadata/schemas.py` for
-the selected `--repo`.
+Suggested values for list fields (sensors, domain, kit, …) come from the
+DEEPCRAFT&trade; AI Hub catalog. Prompt order matches the metadata schema for
+your selected `--repo`.
 
 | Topic | Behaviour |
 | --- | --- |
-| **Choices** (sensors, domain, kit, …) | Pick by number, or type a custom value (one confirmation). Custom text is title-cased (`smart home` → `Smart Home`). |
+| **Choices** (sensors, domain, kit, …) | Pick by number from the AI Hub list, or type a custom value (one confirmation). Custom text is title-cased (`smart home` → `Smart Home`). |
 | **Kit → device** | Device is derived from kit(s); custom kit names prompt for device. |
 | **Type → workflow** | Pick one or both types (`1,2`); workflow is set automatically. |
 | **Brand** | Infineon, a listed partner, or **New Brand/Partner** (custom image + URL). |
@@ -139,9 +140,13 @@ the selected `--repo`.
 | **Accelerators only** | `algorithm` required. |
 | **Model zoo only** | `metrics` optional (fixed labels, you enter values). |
 
-All fields are required except `metrics` on `model-zoo-psoc`. Loading an
-existing `metadata.json` prompts for anything missing; values outside the
-suggested lists show a warning but you can proceed.
+All fields are required except `metrics` on `model-zoo-psoc`.
+
+If **`metadata.json` already exists**, the tool loads it first: missing fields
+are prompted; values not in the AI Hub–based suggested lists show a warning
+(this is normal for new projects with sensors, kits, or devices not yet in the
+catalog, or if the file was edited or is outdated). You can continue, edit
+`metadata.json`, or re-run with `--override-metadata`.
 
 ### Updating an existing pull request
 

@@ -41,7 +41,7 @@ GitHub auth, fork sync, branching, push, and opens the PR in your browser.
 | **`pr_tool/target_repo.py`** | `TargetRepo` dataclass (repo name, PR title template, layout key, ignored push dirs) and registry validation against known layouts. |
 | **`pr_tool/project_layouts.py`** | Project folder validators registered in `LAYOUTS`. `accelerator_layout` enforces DEEPCRAFT Studio structure and CamelCase names; `model_zoo_psoc_layout` requires README + metadata with branch-safe names. |
 | **`pr_tool/input.py`** | Argparse setup, `--repo` / `--path` / metadata CLI flags, and `Input.collect_metadata()` delegating to the metadata engine. |
-| **`pr_tool/validation.py`** | Validates project layout before publish and loaded `metadata.json` against the active schema (missing fields, choice violations, derived-field repair). |
+| **`pr_tool/validation.py`** | Validates project layout and loaded `metadata.json` (missing fields, values outside AI Hub suggested lists with optional continue, derived-field repair). |
 | **`pr_tool/image_selector.py`** | Loads `images.json`, exposes available tags/images, and picks the best tag overlap for auto-selection (fallback `deepcraft.webp`). |
 | **`pr_tool/images.json`** | Shipped catalog of `{name, tags}` entries used for thumbnail/main image selection. |
 | **`pr_tool/utils.py`** | `group_files()` splits diffs into push chunks under GitHub's 2 GB limit; readonly cleanup helper for git scratch removal. |

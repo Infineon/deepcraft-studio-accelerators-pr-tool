@@ -83,22 +83,34 @@ def validate_loaded_metadata(
     while True:
         result = validate_metadata(current, schema)
         if result.missing or result.other:
-            print(f'\n{constants.ICON_WARNING} metadata.json is incomplete or invalid:')
+            print(
+                f'\n{constants.ICON_WARNING} Your project\'s metadata.json is missing '
+                f'required fields or has values this tool cannot accept:',
+            )
             for issue in result.missing + result.other:
                 print(f'  - {issue}')
-            print(f'\n{constants.ICON_INFO} Please provide the missing metadata below.')
+            print(f'\n{constants.ICON_INFO} Please provide the missing or corrected metadata below.')
             if not result.fields_to_collect:
                 raise ValueError('metadata.json has issues that cannot be collected interactively')
             current = collect_missing(current, result.fields_to_collect)
             current = _repair_image_mirror(current)
             continue
         if result.choice_violations:
-            print(f'\n{constants.ICON_WARNING} metadata.json contains values outside the '
-                  f'allowed lists:')
+            print(
+                f'\n{constants.ICON_WARNING} Your project\'s metadata.json uses values '
+                f'that are not in this tool\'s suggested lists, which are based on the projects '
+                f'already available in the DEEPCRAFT\u2122 AI Hub:',
+            )
             for issue in result.choice_violations:
                 print(f'  - {issue}')
+            print(
+                f'\n{constants.ICON_INFO} Common for new projects that use sensors, kits, '
+                f'devices, applications, use cases, or algorithms not yet in the AI Hub '
+                f'catalog, or if metadata.json was edited, copied, or saved before the '
+                f'lists were updated.',
+            )
             print()
-            if not confirm('Proceed anyway with this metadata?'):
+            if not confirm('Continue with this metadata anyway?'):
                 print(f'{constants.ICON_ABORT} Aborted by user.')
                 sys.exit(0)
         return finalize_metadata(current, schema)
