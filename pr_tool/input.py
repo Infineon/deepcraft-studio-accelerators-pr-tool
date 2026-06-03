@@ -12,18 +12,42 @@ from project_layouts import get_project_layout
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 
+class _RepoHelpfulParser(argparse.ArgumentParser):
+    """ArgumentParser that always reminds the user of the valid --repo targets."""
+
+    repo_choices_help: list[str] = []
+
+    def error(self, message: str) -> None:  # type: ignore[override]
+        if 'repo' in message and self.repo_choices_help:
+            separator = '=' * 60
+            targets = '\n'.join(f'  - {choice}' for choice in self.repo_choices_help)
+            self.print_usage(sys.stderr)
+            self.exit(2, (
+                f'{separator}\n'
+                f'{self.prog}: error: {message}\n'
+                f'{separator}\n'
+                f'Example:\n'
+                f'  python {self.prog} --path <your-project-path> --repo <push-to-this-repo>\n'
+                f'{separator}\n'
+                f'Available --repo targets:\n{targets}\n'
+                f'{separator}\n'
+            ))
+        super().error(message)
+
+
 class Input:
     def __init__(self) -> None:
-        repo_choices = ', '.join(
+        repo_choices = [
             f'{key} ({cfg.repo_name})' for key, cfg in constants.TARGET_REPOS.items()
-        )
-        parser = argparse.ArgumentParser(
+        ]
+        parser = _RepoHelpfulParser(
             description=f'Submit a project to an Infineon {constants.DEEPCRAFT} GitHub repository.',
         )
+        parser.repo_choices_help = repo_choices
         parser.add_argument(
             '--repo', required=True, choices=sorted(constants.TARGET_REPOS),
             metavar='TARGET',
-            help=f'Target repository. Choices: {repo_choices}',
+            help=f'Target repository. Choices: {", ".join(repo_choices)}',
         )
         parser.add_argument('--path', required=True,
                             help='The root path of the project.')

@@ -6,9 +6,36 @@ Choosing a **brand** sets ``brand_image_id`` and ``brand_url`` together.
 Re-run ``scripts/parse_master_json.py`` to refresh when the hub is updated.
 """
 
+import re
+from collections.abc import Iterable
 from dataclasses import dataclass
 
-ALGORITHM = ('Classification', 'Regression', 'Object Detection')
+# Symbols users often omit or mistype when entering kit/device names.
+_TRADEMARK_CHARS = ('\u2122', '\u00ae', '\u2120')  # ™ ® ℠
+
+
+def normalize_for_match(value: str) -> str:
+    """Loosely normalize a value for soft matching (case, trademark symbols, spacing)."""
+    text = value.casefold()
+    for char in _TRADEMARK_CHARS:
+        text = text.replace(char, '')
+    return re.sub(r'\s+', ' ', text).strip()
+
+
+def canonical_choice(value: str, choices: Iterable[str]) -> str | None:
+    """Return the catalog entry matching *value* ignoring case/trademark/spacing, else ``None``."""
+    if not isinstance(value, str):
+        return None
+    target = normalize_for_match(value)
+    if not target:
+        return None
+    for choice in choices:
+        if normalize_for_match(choice) == target:
+            return choice
+    return None
+
+
+ALGORITHM = ('Classification', 'Regression', 'Object Detection', 'Image Classification')
 
 SENSORS = (
     'Microphone',
@@ -104,6 +131,7 @@ USE_CASE = (
     'Gesture Detection',
     'Gestures Detection',
     'Gestures Recognition',
+    'Ground Detection',
     'Gunshot Detection',
     'Hand Movement Type Detection',
     'Home Sounds Detection',

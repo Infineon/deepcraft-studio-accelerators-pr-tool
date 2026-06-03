@@ -6,6 +6,7 @@ from argparse import _ArgumentGroup
 from typing import Callable
 
 import constants
+from metadata.choices import canonical_choice
 
 
 def format_custom_choice_value(value: str) -> str:
@@ -109,12 +110,11 @@ def confirm_new_value(value: str, kind: str) -> bool:
 
 
 def _resolve_custom_choice(raw: str, choices: list[str]) -> str | None:
-    """Format a custom entry; return a catalog match if casing was the only difference."""
+    """Return a catalog match for a custom entry, tolerating case, trademark, and spacing."""
     formatted = format_custom_choice_value(raw)
     if formatted in choices:
         return formatted
-    choice_by_lower = {choice.lower(): choice for choice in choices}
-    return choice_by_lower.get(formatted.lower())
+    return canonical_choice(raw, choices)
 
 
 def _format_grouped_choices(groups: list[tuple[str, list[str]]]) -> str:

@@ -13,6 +13,7 @@ from metadata.choices import (
     BRAND_IMAGE_ID,
     METRIC_LABELS,
     brand_for_image,
+    canonical_choice,
     normalize_project_types,
     workflow_for_types,
 )
@@ -167,10 +168,15 @@ def _validate_single_choice(metadata: dict, spec: FieldSpec, result: MetadataVal
     if not isinstance(value, str) or not value.strip():
         _mark_missing(result, spec, f'Missing or empty required field: {spec.key}')
         return
-    if value not in spec.choices:
-        result.choice_violations.append(
-            f'{spec.key}: {value!r} is not in the allowed list ({_choice_list_hint(spec)})',
-        )
+    if value in spec.choices:
+        return
+    matched = canonical_choice(value, spec.choices)
+    if matched is not None:
+        metadata[spec.key] = matched
+        return
+    result.choice_violations.append(
+        f'{spec.key}: {value!r} is not in the allowed list ({_choice_list_hint(spec)})',
+    )
 
 
 def _validate_multi_choice(metadata: dict, spec: FieldSpec, result: MetadataValidationResult) -> None:
@@ -187,14 +193,20 @@ def _validate_multi_choice(metadata: dict, spec: FieldSpec, result: MetadataVali
     if not isinstance(value, list) or not value:
         _mark_missing(result, spec, f'{spec.key} must be a non-empty list')
         return
-    for item in value:
+    metadata[spec.key] = value
+    for index, item in enumerate(value):
         if not isinstance(item, str) or not item.strip():
             _mark_missing(result, spec, f'{spec.key} contains an invalid entry')
             return
-        if item not in spec.choices:
-            result.choice_violations.append(
-                f'{spec.key}: {item!r} is not in the allowed list ({_choice_list_hint(spec)})',
-            )
+        if item in spec.choices:
+            continue
+        matched = canonical_choice(item, spec.choices)
+        if matched is not None:
+            value[index] = matched
+            continue
+        result.choice_violations.append(
+            f'{spec.key}: {item!r} is not in the allowed list ({_choice_list_hint(spec)})',
+        )
 
 
 def _validate_derived_workflow(metadata: dict, spec: FieldSpec, result: MetadataValidationResult) -> None:
