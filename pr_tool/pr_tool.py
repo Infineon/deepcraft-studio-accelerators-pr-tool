@@ -62,6 +62,30 @@ def fork(base_repo: str) -> None:
     time.sleep(2)  # Wait for repo to be created
 
 
+def _is_commit_sha(value: str) -> bool:
+    return len(value) == 40 and all(c in '0123456789abcdef' for c in value.lower())
+
+
+def ensure_fork_matches_upstream(user, target_repo) -> None:
+    """`gh repo sync --force` can leave the fork ahead of upstream (stale merge commits).
+
+    Compare the fork's and upstream's main SHA and force-reset the fork's ref via the
+    GitHub API when they differ, so the project branch is created from a clean base.
+    """
+    upstream_sha = gh(['api', f'repos/{target_repo.base_repo}/commits/{MAIN_BRANCH}',
+                       '--jq', '.sha'], check=False)
+    fork_sha = gh(['api', f'repos/{user}/{target_repo.repo_name}/commits/{MAIN_BRANCH}',
+                   '--jq', '.sha'], check=False)
+    if not _is_commit_sha(upstream_sha) or not _is_commit_sha(fork_sha):
+        return
+    if upstream_sha == fork_sha:
+        return
+    cli.progress('Fork still ahead of upstream; resetting fork main to upstream...')
+    gh(['api', '-X', 'PATCH',
+        f'repos/{user}/{target_repo.repo_name}/git/refs/heads/{MAIN_BRANCH}',
+        '-f', f'sha={upstream_sha}', '-F', 'force=true'], check=False)
+
+
 def print_header(title: str, *, icon: str = '') -> None:
     sep = '=' * 60
     label = f'{icon} {title}' if icon else title
@@ -188,6 +212,8 @@ elif gh(['repo', 'sync', f'{user}/{target_repo.repo_name}', '--force', '--branch
     gh(['auth', 'refresh', '--hostname', 'github.com', '-s', 'workflow,delete_repo'])
     gh(['repo', 'delete', f'{user}/{target_repo.repo_name}', '--yes'])
     fork(target_repo.base_repo)
+else:
+    ensure_fork_matches_upstream(user, target_repo)
 
 cli.git_dir = git_dir = project_path.parent / GIT_DIR / target_repo.key / project_name
 if git_dir.exists():
@@ -232,9 +258,10 @@ try:  # Always remove git_dir after this block
 
     # Push project content to the user's remote (origin)
     cli.cwd = repo_root = project_path.parent
+    cli.work_tree = repo_root
     try:
         # Handle deletions
-        ignore_paths = [f':^{project_path / dir}' for dir in target_repo.git_ignored_dirs]
+        ignore_paths = [f':^{project_path.name}/{dir}' for dir in target_repo.git_ignored_dirs]
         ignore_paths.extend(build_submission_exclude_pathspecs(project_path))
         diff_names_deleted = filter_submission_paths(
             git(['diff', '--name-only', '--diff-filter=D', '--relative', '--', str(project_path), *ignore_paths], stdout=PIPE),
@@ -247,27 +274,39 @@ try:  # Always remove git_dir after this block
                 git(['rm', f'--pathspec-from-file={pathspec.name}'])
                 os.remove(pathspec.name)
         # Divide push to groups, each with a size less than 2GB
-        git(['add', '--intent-to-add', '--', project_name, *ignore_paths])
+        git(['add', '--intent-to-add', '--', project_path.name, *ignore_paths])
         diff_names = filter_submission_paths(
             git(['diff', '--name-only', '--relative', '--', str(project_path), *ignore_paths], stdout=PIPE),
             project_path,
         )
         gh_push_limit = (2 * 1024 * 1024 * 1024)  # 2 GB
-        file_groups = list(group_files(repo_root, diff_names, gh_push_limit - 1)) if diff_names else []
-        if file_groups:
-            number_of_chunks = len(file_groups)
-            cli.progress(f'Pushing changes ({number_of_chunks} chunk{"s" if number_of_chunks != 1 else ""})...')
-            for index, group in enumerate(file_groups):
+        names = [name for name in diff_names.splitlines() if name.strip()]
+        # GitHub caps the PR file list at 3,000 entries. Commit root-level project
+        # files (README.md, metadata.json, *.improj, ...) first so they stay visible
+        # to reviewers ahead of large Data/ directories that follow.
+        root_files = [name for name in names if name.count('/') <= 1]
+        data_files = [name for name in names if name.count('/') > 1]
+        commit_batches: list[tuple[str, list[str]]] = []
+        if root_files:
+            commit_batches.append(('project files', root_files))
+        if data_files:
+            data_chunks = list(group_files(repo_root, '\n'.join(data_files), gh_push_limit - 1))
+            if len(data_chunks) == 1:
+                commit_batches.append(('data files', data_chunks[0]))
+            else:
+                total = len(data_chunks)
+                for index, chunk in enumerate(data_chunks, start=1):
+                    commit_batches.append((f'data chunk {index} of {total}', chunk))
+        if commit_batches:
+            count = len(commit_batches)
+            cli.progress(f'Pushing changes ({count} commit{"s" if count != 1 else ""})...')
+            for label, group in commit_batches:
                 with NamedTemporaryFile('w', delete=False) as pathspec:
                     pathspec.write('\n'.join(group))
                     pathspec.close()
                     git(['add', f'--pathspec-from-file={pathspec.name}'])
                     os.remove(pathspec.name)
-                if index == 0 == number_of_chunks - 1:
-                    commit_msg = commit_verb + ' files'
-                else:
-                    commit_msg = commit_verb + f' chunk {index + 1} of {number_of_chunks}'
-                git(['commit', '--no-verify', '-m', commit_msg])
+                git(['commit', '--no-verify', '-m', f'{commit_verb} {label}'])
                 git(['push', '-u', 'origin', 'HEAD'])
         elif diff_names_deleted:
             cli.progress('Pushing deletions...')

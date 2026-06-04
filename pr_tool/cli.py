@@ -47,6 +47,7 @@ class Cli:
     def __init__(self, *, verbose: bool = False, base_repo: str):
         self.cwd = None
         self.git_dir = None
+        self.work_tree = None
         self.verbose = verbose
         self.base_repo = base_repo
         self.gh_executable, self.gh_source = _resolve_gh_executable()
@@ -92,7 +93,12 @@ class Cli:
         return result.returncode if not check else result
 
     def git(self, args: list, *popenargs, **kwargs) -> CliResult:
-        return self.run(['git', f'--git-dir={self.git_dir}'] + args, *popenargs, **kwargs)
+        base = ['git', f'--git-dir={self.git_dir}']
+        # --work-tree on the command line overrides any stale ``core.worktree`` left
+        # behind by ``clone --separate-git-dir`` (which points at the deleted tmpdir).
+        if self.work_tree is not None:
+            base.append(f'--work-tree={self.work_tree}')
+        return self.run(base + args, *popenargs, **kwargs)
 
     def gh(self, args: list, *popenargs, **kwargs) -> CliResult:
         if args[0] == 'pr':
