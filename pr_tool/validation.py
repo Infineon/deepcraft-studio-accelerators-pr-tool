@@ -30,6 +30,7 @@ class MetadataValidationResult:
     choice_violations: list[str] = field(default_factory=list)
     other: list[str] = field(default_factory=list)
     fields_to_collect: set[str] = field(default_factory=set)
+    choice_fields: set[str] = field(default_factory=set)
 
     @property
     def ok(self) -> bool:
@@ -78,7 +79,7 @@ def validate_loaded_metadata(
     collect_missing: CollectMissingFn,
 ) -> dict:
     """Validate loaded metadata; prompt for missing fields, confirm on choice violations."""
-    from input import confirm
+    from metadata import confirm_metadata
 
     current = _repair_image_mirror(dict(metadata))
     while True:
@@ -110,10 +111,21 @@ def validate_loaded_metadata(
                 f'catalog, or if metadata.json was edited, copied, or saved before the '
                 f'lists were updated.',
             )
+            print(
+                f'\n{constants.ICON_INFO} You did not see the suggested lists for these '
+                f'fields on this run. If a value was meant to match an existing one, '
+                f'choose redo (n) to browse the lists and pick from them. Choose yes (y) '
+                f'only if you intend to keep these as new values.',
+            )
             print()
-            if not confirm('Continue with this metadata anyway?'):
+            answer = confirm_metadata()
+            if answer == 'abort':
                 print(f'{constants.ICON_ABORT} Aborted by user.')
                 sys.exit(0)
+            if answer == 'no':
+                current = collect_missing(current, result.choice_fields)
+                current = _repair_image_mirror(current)
+                continue
         return finalize_metadata(current, schema)
 
 
@@ -132,6 +144,11 @@ def _mark_missing(result: MetadataValidationResult, spec: FieldSpec, message: st
 def _mark_other(result: MetadataValidationResult, spec: FieldSpec, message: str) -> None:
     result.other.append(message)
     result.fields_to_collect.add(spec.key)
+
+
+def _mark_choice(result: MetadataValidationResult, spec: FieldSpec, message: str) -> None:
+    result.choice_violations.append(message)
+    result.choice_fields.add(spec.key)
 
 
 def _validate_required_str(
@@ -174,7 +191,8 @@ def _validate_single_choice(metadata: dict, spec: FieldSpec, result: MetadataVal
     if matched is not None:
         metadata[spec.key] = matched
         return
-    result.choice_violations.append(
+    _mark_choice(
+        result, spec,
         f'{spec.key}: {value!r} is not in the allowed list ({_choice_list_hint(spec)})',
     )
 
@@ -204,7 +222,8 @@ def _validate_multi_choice(metadata: dict, spec: FieldSpec, result: MetadataVali
         if matched is not None:
             value[index] = matched
             continue
-        result.choice_violations.append(
+        _mark_choice(
+            result, spec,
             f'{spec.key}: {item!r} is not in the allowed list ({_choice_list_hint(spec)})',
         )
 
@@ -245,7 +264,8 @@ def _validate_brand(metadata: dict, spec: FieldSpec, result: MetadataValidationR
         _mark_missing(result, spec, 'Missing or empty required field: brand_url')
         return
     if brand_image_id not in BRAND_IMAGE_ID:
-        result.choice_violations.append(
+        _mark_choice(
+            result, spec,
             f'brand_image_id: {brand_image_id!r} is not in the allowed list '
             f'({len(BRAND_IMAGE_ID)} known brands)',
         )
@@ -295,7 +315,8 @@ def _validate_metrics(metadata: dict, spec: FieldSpec, result: MetadataValidatio
         label = entry.get('label')
         value = entry.get('value')
         if not isinstance(label, str) or label not in allowed_labels:
-            result.choice_violations.append(
+            _mark_choice(
+                result, spec,
                 f'metrics[{index}] label {label!r} is not allowed '
                 f'(expected one of {len(METRIC_LABELS)} predefined labels)',
             )
