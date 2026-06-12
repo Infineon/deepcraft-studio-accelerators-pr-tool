@@ -1,4 +1,4 @@
-# DEEPCRAFT&trade; Studio Accelerators – Pull Request Tool
+# DEEPCRAFT&trade; Pull Request Tool
 
 A small Python command-line utility for opening pull requests against Infineon
 DEEPCRAFT&trade; GitHub repositories:
