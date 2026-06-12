@@ -1,60 +1,54 @@
 import argparse
-import re
-from argparse import ArgumentTypeError
+import os
+import sys
 from pathlib import Path
-from typing import Callable
 
-TITLE_MAX_LENGTH = 40
-DESCRIPTION_MAX_LENGTH = 100
-ALGORITHM = ['Classification', 'Regression']
-SENSORS = [
-    'Microphone', 'IVS-Infineon Vibration Sensor',
-    'Camera',
-    'Radar',
-    'Capacitive Sensing', 'Inductive Sensing',
-    'Current', 'Voltage', 'Power',
-    'Torque', 'RPM',
-    'IMU', 'Vibration',
-    'Other',
-]
+import constants
+from metadata import collect_metadata, confirm, get_metadata_schema
+from metadata.schemas import SCHEMAS
+from target_repo import get_target_repo
+from project_layouts import get_project_layout
+
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 
-def arg_validator(max_len: int) -> Callable[[str], str]:
-    def validate_arg(value: str) -> str:
-        if not value:
-            raise ArgumentTypeError(f'Value is empty')
-        if len(value) > max_len:
-            raise ArgumentTypeError(f'Value is more than {max_len} characters')
-        return value
+class _RepoHelpfulParser(argparse.ArgumentParser):
+    """ArgumentParser that always reminds the user of the valid --repo targets."""
 
-    return validate_arg
+    repo_choices_help: list[str] = []
 
-
-def input_str(name: str, max_len: int) -> str:
-    value = input(f'{name} (max {max_len} characters): ')
-    return arg_validator(max_len)(value)
-
-
-def input_choice(name: str, choices: list[str], default_idx: int = 0) -> str:
-    choices_sub_list = '\n'.join([f'{i + 1}. {choice} {"(default)" if default_idx == i else ""}' for i, choice in enumerate(choices)])
-    range_str = f'between 1 to {len(choices)}'
-    prompt = f'{name} - type {range_str} or enter a new name\n{choices_sub_list}\n: '
-    while True:
-        choice = input(prompt)
-        if not choice:
-            return choices[default_idx]
-        if choice.isnumeric():
-            if int(choice) <= 0 or int(choice) > len(choices):
-                print(f'Number {choice} is not {range_str}')
-                continue
-            return choices[int(choice) - 1]
-        else:
-            return choice
+    def error(self, message: str) -> None:  # type: ignore[override]
+        if 'repo' in message and self.repo_choices_help:
+            separator = '=' * 60
+            targets = '\n'.join(f'  - {choice}' for choice in self.repo_choices_help)
+            self.print_usage(sys.stderr)
+            self.exit(2, (
+                f'{separator}\n'
+                f'{self.prog}: error: {message}\n'
+                f'{separator}\n'
+                f'Example:\n'
+                f'  python {self.prog} --path <your-project-path> --repo <push-to-this-repo>\n'
+                f'{separator}\n'
+                f'Available --repo targets:\n{targets}\n'
+                f'{separator}\n'
+            ))
+        super().error(message)
 
 
 class Input:
     def __init__(self) -> None:
-        parser = argparse.ArgumentParser(description='Submit a project as a candidate Starter Model.')
+        repo_choices = [
+            f'{key} ({cfg.repo_name})' for key, cfg in constants.TARGET_REPOS.items()
+        ]
+        parser = _RepoHelpfulParser(
+            description=f'Submit a project to an Infineon {constants.DEEPCRAFT} GitHub repository.',
+        )
+        parser.repo_choices_help = repo_choices
+        parser.add_argument(
+            '--repo', required=True, choices=sorted(constants.TARGET_REPOS),
+            metavar='TARGET',
+            help=f'Target repository. Choices: {", ".join(repo_choices)}',
+        )
         parser.add_argument('--path', required=True,
                             help='The root path of the project.')
         parser.add_argument('--name', default=None,
@@ -62,23 +56,36 @@ class Input:
                                  'Default is the containing directory\'s name.')
         parser.add_argument('--override-metadata', action='store_true',
                             help='Override existing metadata.json file, if any, with meta-data options below.')
-        metadata = parser.add_argument_group('Project meta-data')
-        metadata.add_argument('--title', type=arg_validator(TITLE_MAX_LENGTH), default=None,
-                              help=f'The title of the project; Max {TITLE_MAX_LENGTH} characters.')
-        metadata.add_argument('--description', type=arg_validator(DESCRIPTION_MAX_LENGTH), default=None,
-                              help=f'The description of the project; Max {DESCRIPTION_MAX_LENGTH} characters.')
-        metadata.add_argument('--algorithm', choices=ALGORITHM, default=None,
-                              help='The supervised learning algorithm of the project; Default is Classification.')
-        metadata.add_argument('--sensor', choices=SENSORS, default=None,
-                              help='The target sensor of the project; Default is Other.')
+        parser.add_argument('--verbose', '-v', action='store_true',
+                            help='Print every git/gh command and captured output (for debugging).')
+        metadata_group = parser.add_argument_group('Project meta-data')
+        registered_cli: set[str] = set()
+        for schema in SCHEMAS.values():
+            schema.register_cli_flags(metadata_group, registered_cli)
         args = parser.parse_args()
+        self._metadata_schema = get_metadata_schema(args.repo)
+        self._args = args
+        self.verbose = args.verbose
+        self.repo_key = args.repo
+        self.target_repo = get_target_repo(args.repo)
         self.project_path = Path(args.path).resolve()
         self.project_name = args.name or self.project_path.name
-        if not re.fullmatch(r'(?:[A-Z][a-z]*)+', self.project_name):
-            raise ValueError(f'Project name "{self.project_name}" is not CamelCase')
-        self.metadata = dict(
-            title=args.title or input_str('Project title', TITLE_MAX_LENGTH),
-            description=args.description or input_str('Project description', DESCRIPTION_MAX_LENGTH),
-            algorithm=args.algorithm or input_choice('Algorithm', ALGORITHM),
-            sensors=[args.sensor or input_choice('Sensor', SENSORS, default_idx=len(SENSORS) - 1)],
-        ) if args.override_metadata or not (self.project_path / 'metadata.json').exists() else None
+        get_project_layout(self.target_repo.project_layout).validate_project_name(
+            self.project_name,
+        )
+        if args.override_metadata or not (self.project_path / 'metadata.json').exists():
+            self.metadata = self.collect_metadata()
+        else:
+            self.metadata = None
+
+    def collect_metadata(self, *, use_cli_args: bool = True,
+                         previous: dict | None = None,
+                         only_fields: set[str] | None = None) -> dict:
+        return collect_metadata(
+            self._metadata_schema,
+            args=self._args,
+            project_name=self.project_name,
+            use_cli_args=use_cli_args,
+            previous=previous,
+            only_fields=only_fields,
+        )
