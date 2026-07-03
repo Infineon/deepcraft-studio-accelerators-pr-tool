@@ -13,7 +13,7 @@ from metadata.choices import (
     BRAND_IMAGE_ID,
     METRIC_LABELS,
     brand_for_image,
-    canonical_choice,
+    match_choice,
     normalize_project_types,
     workflow_for_types,
 )
@@ -44,7 +44,11 @@ def validate_project_structure(
     get_project_layout(target_repo.project_layout).validate(project_name, project_path)
 
 
-def validate_metadata(metadata: dict, schema: MetadataSchema) -> MetadataValidationResult:
+def validate_metadata(
+    metadata: dict,
+    schema: MetadataSchema,
+    project_name: str | None = None,
+) -> MetadataValidationResult:
     """Validate *metadata* against *schema*, splitting missing vs choice issues."""
     result = MetadataValidationResult()
     if not isinstance(metadata, dict):
@@ -67,7 +71,7 @@ def validate_metadata(metadata: dict, schema: MetadataSchema) -> MetadataValidat
         elif spec.kind == 'derived_workflow':
             _validate_derived_workflow(metadata, spec, result)
         elif spec.kind in ('accelerator_links', 'model_zoo_psoc_links'):
-            _validate_links(metadata, spec, result)
+            _validate_links(metadata, spec, result, project_name)
         elif spec.kind == 'metrics':
             _validate_metrics(metadata, spec, result)
     return result
@@ -77,13 +81,14 @@ def validate_loaded_metadata(
     metadata: dict,
     schema: MetadataSchema,
     collect_missing: CollectMissingFn,
+    project_name: str | None = None,
 ) -> dict:
     """Validate loaded metadata; prompt for missing fields, confirm on choice violations."""
     from metadata import confirm_metadata
 
     current = _repair_image_mirror(dict(metadata))
     while True:
-        result = validate_metadata(current, schema)
+        result = validate_metadata(current, schema, project_name)
         if result.missing or result.other:
             print(
                 f'\n{constants.ICON_WARNING} Your project\'s metadata.json is missing '
@@ -187,7 +192,7 @@ def _validate_single_choice(metadata: dict, spec: FieldSpec, result: MetadataVal
         return
     if value in spec.choices:
         return
-    matched = canonical_choice(value, spec.choices)
+    matched = match_choice(value, spec.choices)
     if matched is not None:
         metadata[spec.key] = matched
         return
@@ -218,7 +223,7 @@ def _validate_multi_choice(metadata: dict, spec: FieldSpec, result: MetadataVali
             return
         if item in spec.choices:
             continue
-        matched = canonical_choice(item, spec.choices)
+        matched = match_choice(item, spec.choices)
         if matched is not None:
             value[index] = matched
             continue
@@ -280,7 +285,12 @@ def _validate_brand(metadata: dict, spec: FieldSpec, result: MetadataValidationR
         )
 
 
-def _validate_links(metadata: dict, spec: FieldSpec, result: MetadataValidationResult) -> None:
+def _validate_links(
+    metadata: dict,
+    spec: FieldSpec,
+    result: MetadataValidationResult,
+    project_name: str | None = None,
+) -> None:
     links = metadata.get('links')
     if links is None:
         _mark_missing(result, spec, 'Missing required field: links')
@@ -296,6 +306,21 @@ def _validate_links(metadata: dict, spec: FieldSpec, result: MetadataValidationR
             if not isinstance(link.get(key), str) or not link[key].strip():
                 _mark_missing(result, spec, f'links[{index}] missing or empty {key!r}')
                 return
+        _repair_github_link_url(link, project_name)
+
+
+def _repair_github_link_url(link: dict, project_name: str | None) -> None:
+    """Silently align a GitHub project link's trailing path segment with *project_name*."""
+    if not project_name:
+        return
+    marker = '/tree/main/'
+    url = link['url']
+    if link.get('label') != 'GitHub' or marker not in url:
+        return
+    base, _, _tail = url.partition(marker)
+    corrected = f'{base}{marker}{project_name}'
+    if corrected != url:
+        link['url'] = corrected
 
 
 def _validate_metrics(metadata: dict, spec: FieldSpec, result: MetadataValidationResult) -> None:
