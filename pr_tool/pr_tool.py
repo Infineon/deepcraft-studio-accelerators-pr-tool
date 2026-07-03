@@ -152,6 +152,7 @@ try:
                 previous=current,
                 only_fields=field_keys,
             ),
+            project_name,
         )
     else:
         metadata = None

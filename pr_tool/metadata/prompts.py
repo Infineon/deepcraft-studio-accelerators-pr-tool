@@ -6,7 +6,7 @@ from argparse import _ArgumentGroup
 from typing import Callable
 
 import constants
-from metadata.choices import canonical_choice
+from metadata.choices import match_choice
 
 
 def format_custom_choice_value(value: str) -> str:
@@ -114,7 +114,7 @@ def _resolve_custom_choice(raw: str, choices: list[str]) -> str | None:
     formatted = format_custom_choice_value(raw)
     if formatted in choices:
         return formatted
-    return canonical_choice(raw, choices)
+    return match_choice(raw, choices)
 
 
 def _format_grouped_choices(groups: list[tuple[str, list[str]]]) -> str:

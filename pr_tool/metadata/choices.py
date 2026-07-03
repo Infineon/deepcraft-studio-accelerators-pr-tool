@@ -35,6 +35,40 @@ def canonical_choice(value: str, choices: Iterable[str]) -> str | None:
     return None
 
 
+# Long forms users type vs. the abbreviations the AI Hub catalog uses (and vice versa).
+_TOKEN_ALIASES = {
+    'evaluation': 'eval',
+    'development': 'dev',
+}
+
+
+def _match_tokens(value: str) -> frozenset[str]:
+    """Token set of *value*: punctuation folded to spaces, known abbreviations unified."""
+    text = re.sub(r'[^a-z0-9]+', ' ', normalize_for_match(value))
+    return frozenset(_TOKEN_ALIASES.get(token, token) for token in text.split())
+
+
+def fuzzy_choice(value: str, choices: Iterable[str]) -> str | None:
+    """Resolve *value* by token set, tolerating punctuation and eval/dev abbreviations.
+
+    Returns a catalog entry only when exactly one candidate shares the same token
+    set, so genuinely ambiguous input (e.g. matching two kits) is left unresolved.
+    """
+    if not isinstance(value, str):
+        return None
+    target = _match_tokens(value)
+    if not target:
+        return None
+    matches = [choice for choice in choices if _match_tokens(choice) == target]
+    return matches[0] if len(matches) == 1 else None
+
+
+def match_choice(value: str, choices: Iterable[str]) -> str | None:
+    """Best-effort resolve to a catalog entry: exact/case/trademark/spacing, then token fuzzy."""
+    choices = tuple(choices)
+    return canonical_choice(value, choices) or fuzzy_choice(value, choices)
+
+
 ALGORITHM = ('Classification', 'Regression', 'Object Detection', 'Image Classification')
 
 SENSORS = (
