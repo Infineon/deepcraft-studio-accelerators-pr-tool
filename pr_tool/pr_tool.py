@@ -10,6 +10,7 @@ from tempfile import NamedTemporaryFile, TemporaryDirectory
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from cli import Cli
 from constants import (
+    BASE_REPO_OWNER,
     GIT_DIR,
     HOST,
     ICON_ABORT,
@@ -24,6 +25,7 @@ from constants import (
     TARGET_REPOS,
 )
 from input import Input, confirm
+from updater import ensure_latest_version
 from metadata import confirm_metadata, finalize_metadata, format_metadata_json, get_metadata_schema
 from submission_exclusions import (
     build_submission_exclude_pathspecs,
@@ -97,6 +99,12 @@ def print_header(title: str, *, icon: str = '') -> None:
 # ── Tool start ────────────────────────────────────────────────
 validate_target_repos_registry(TARGET_REPOS)
 validate_metadata_schemas(set(TARGET_REPOS))
+
+# Self-update to the latest published version (skipped with --no-update or when
+# BASE_REPO_OWNER is overridden for local development).
+ensure_latest_version(
+    enabled='--no-update' not in sys.argv and BASE_REPO_OWNER == 'Infineon',
+)
 
 try:
     args = Input()
@@ -226,8 +234,12 @@ try:  # Always remove git_dir after this block
     cli.progress('Preparing local git workspace...')
     with TemporaryDirectory() as tmpdir:
         cli.cwd = tmpdir
-        # Clone repo empty and shallow; --no-single-branch is required to allow this copy to fetch other branches later
-        git(['clone', '--no-checkout', '--depth', '1', '--no-single-branch', f'--separate-git-dir={git_dir}',
+        # Clone empty and shallow. --no-single-branch keeps other branch tips fetchable;
+        # --filter=blob:none makes it a partial clone so file contents of unrelated
+        # projects are never downloaded (only fetched lazily for the sparse path we use),
+        # keeping disk/network usage small even when the fork holds many large projects.
+        git(['clone', '--no-checkout', '--depth', '1', '--no-single-branch', '--filter=blob:none',
+             f'--separate-git-dir={git_dir}',
              f'{HOST}/{user}/{target_repo.repo_name}.git', tmpdir])
         git(['remote', 'add', '-t', MAIN_BRANCH, 'upstream', target_repo.base_repo_url])
         git(['config', 'advice.updateSparsePath', 'false'])

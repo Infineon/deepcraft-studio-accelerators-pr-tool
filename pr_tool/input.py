@@ -56,6 +56,8 @@ class Input:
                                  'Default is the containing directory\'s name.')
         parser.add_argument('--override-metadata', action='store_true',
                             help='Override existing metadata.json file, if any, with meta-data options below.')
+        parser.add_argument('--no-update', action='store_true',
+                            help='Do not check for or install a newer version of the tool on startup.')
         parser.add_argument('--verbose', '-v', action='store_true',
                             help='Print every git/gh command and captured output (for debugging).')
         metadata_group = parser.add_argument_group('Project meta-data')
