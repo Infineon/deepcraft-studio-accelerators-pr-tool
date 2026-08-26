@@ -203,8 +203,9 @@ print()
 cli.ensure_git_version()
 git = cli.git
 gh = cli.gh
-gh(['config', 'set', 'prompt', 'disabled'])
+# Keep prompts enabled until after auth — login/refresh need the browser flow.
 cli.ensure_github_auth(required_scopes=('workflow',))
+gh(['config', 'set', 'prompt', 'disabled'])
 user = gh(['api', 'user', '--jq', '.login'])
 email = gh(['api', 'user', '--jq', '.email'])
 
