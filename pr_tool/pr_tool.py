@@ -145,16 +145,19 @@ try:
         sys.exit(0)
     print()
 
-    if args.metadata:
-        metadata = args.metadata
-    elif metadata_path.exists():
+    # Metadata review / collection (after summary so the user can abort first)
+    metadata_schema = get_metadata_schema(args.repo_key)
+    print_header('Metadata Collection', icon=ICON_INFO)
+    if args.override_metadata or not metadata_path.exists():
+        metadata = args.collect_metadata()
+    else:
         try:
             metadata = json.loads(metadata_path.read_text(encoding='utf-8'))
         except (OSError, json.JSONDecodeError) as exc:
             raise ValueError(f'Could not read existing {metadata_path}: {exc}') from exc
         metadata = validate_loaded_metadata(
             metadata,
-            get_metadata_schema(args.repo_key),
+            metadata_schema,
             lambda current, field_keys: args.collect_metadata(
                 use_cli_args=False,
                 previous=current,
@@ -162,12 +165,7 @@ try:
             ),
             project_name,
         )
-    else:
-        metadata = None
 
-    # Metadata review / collection
-    metadata_schema = get_metadata_schema(args.repo_key)
-    print_header('Metadata Collection', icon=ICON_INFO)
     while metadata:
         metadata = finalize_metadata(metadata, metadata_schema)
         print('\nProject metadata.json overview:')
