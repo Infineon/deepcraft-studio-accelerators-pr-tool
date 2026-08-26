@@ -8,7 +8,7 @@ The catalog is a JSON array of objects, each with at least a ``name`` and a
 
     [
         {
-            "name": "Audio.png",
+            "name": "Audio.webp",
             "tags": ["audio", "microphone", "voice"]
         },
         ...

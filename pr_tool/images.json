@@ -1,118 +1,118 @@
 [
   {
-    "name": "animal_monitoring.png",
+    "name": "animal_monitoring.webp",
     "tags": ["animal", "monitoring", "wildlife", "nature"]
   },
   {
-    "name": "audio.png",
+    "name": "audio.webp",
     "tags": ["audio", "microphone", "voice", "music", "noise"]
   },
   {
-    "name": "automotive_environment.png",
+    "name": "automotive_environment.webp",
     "tags": ["automotive", "environment", "weather", "traffic", "city", "street"]
   },
   {
-    "name": "automotive_in_cabin.png",
+    "name": "automotive_in_cabin.webp",
     "tags": ["automotive", "vehicle", "in-cabin"]
   },
   {
-    "name": "automotive_machine_maintenance.png",
+    "name": "automotive_machine_maintenance.webp",
     "tags": ["vehicle", "automotive", "machinery", "predictive maintenance"]
   },
   {
-    "name": "bathroom.png",
+    "name": "bathroom.webp",
     "tags": ["bathroom", "smart home", "shower", "toilet", "sink", "bath", "appliances"]
   },
   {
-    "name": "bedroom.png",
+    "name": "bedroom.webp",
     "tags": ["bedroom", "smart home", "sleep"]
   },
   {
-    "name": "city.png",
+    "name": "city.webp",
     "tags": ["city", "traffic", "parking", "building", "street"]
   },
   {
-    "name": "electrical.png",
+    "name": "electrical.webp",
     "tags": ["electronics", "power", "voltage", "current"]
   },
   {
-    "name": "environment_nature_monitoring.png",
+    "name": "environment_nature_monitoring.webp",
     "tags": ["environment", "nature", "monitoring", "wildlife", "weather", "forest"]
   },
   {
-    "name": "health.png",
+    "name": "health.webp",
     "tags": ["health", "monitoring"]
   },
   {
-    "name": "hmi.png",
+    "name": "hmi.webp",
     "tags": ["human machine interface", "camera", "radar", "touch", "microphone"]
   },
   {
-    "name": "industrial_assembly_line_hmi.png",
+    "name": "industrial_assembly_line_hmi.webp",
     "tags": [ "industrial", "machinery", "assembly line", "human machine interface"]
   },
   {
-    "name": "industrial_big_machinery.png",
+    "name": "industrial_big_machinery.webp",
     "tags": [ "industrial", "machinery", "assembly line"]
   },
   {
-    "name": "industrial_maintenance.png",
+    "name": "industrial_maintenance.webp",
     "tags": ["industrial", "safety", "predictive maintenance", "machinery", "equipment"]
   },
   {
-    "name": "industrial_setting_safety.png",
+    "name": "industrial_setting_safety.webp",
     "tags": ["industrial", "manufacturing", "safety", "quality", "human machine interface"]
   },
   {
-    "name": "iot_smart_home.png",
+    "name": "iot_smart_home.webp",
     "tags": ["smart home", "appliances", "security"]
   },
   {
-    "name": "kitchen.png",
+    "name": "kitchen.webp",
     "tags": ["kitchen", "smart home", "appliances"]
   },
   {
-    "name": "living_room.png",
+    "name": "living_room.webp",
     "tags": ["living room","smart home", "pets", "appliances"]
   },
   {
-    "name": "motion.png",
+    "name": "motion.webp",
     "tags": ["motion", "accelerometer", "gyroscope", "magnetometer", "vibration"]
   },
   {
-    "name": "office.png",
+    "name": "office.webp",
     "tags": ["office", "workplace", "computer", "appliances"]
   },
   {
-    "name": "radar.png",
+    "name": "radar.webp",
     "tags": ["radar"]
   },
   {
-    "name": "security_monitoring.png",
+    "name": "security_monitoring.webp",
     "tags": ["security", "monitoring", "smart home", "parking", "door", "window", "alarm"]
   },
   {
-    "name": "shop_store.png",
+    "name": "shop_store.webp",
     "tags": ["shop", "commercial", "food", "clothing", "appliances", "grocery", "pharmacy"]
   },
   {
-    "name": "sport.png",
+    "name": "sport.webp",
     "tags": ["sport"]
   },
   {
-    "name": "vision.png",
+    "name": "vision.webp",
     "tags": ["vision", "camera", "security", "monitoring"]
   },
   {
-    "name": "wearables.png",
+    "name": "wearables.webp",
     "tags": ["wearable", "device", "health", "sport"]
   },
   {
-    "name": "work_site_setting.png",
+    "name": "work_site_setting.webp",
     "tags": ["industrial", "construction", "logistics", "work site"]
   },
   {
-    "name": "workshop.png",
+    "name": "workshop.webp",
     "tags": ["workshop", "workplace", "tools", "appliances", "equipment"]
   }
 ]

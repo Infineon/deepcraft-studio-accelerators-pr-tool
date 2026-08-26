@@ -50,7 +50,7 @@ class FieldSpec:
             group.add_argument(
                 '--image',
                 default=None,
-                help='Image file name to use directly (e.g. "Audio.png"). '
+                help='Image file name to use directly (e.g. "Audio.webp"). '
                      'Skips the tag-based auto-selection.',
             )
             return
