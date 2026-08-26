@@ -56,6 +56,8 @@ class Input:
                                  'Default is the containing directory\'s name.')
         parser.add_argument('--override-metadata', action='store_true',
                             help='Override existing metadata.json file, if any, with meta-data options below.')
+        parser.add_argument('--no-update', action='store_true',
+                            help='Do not check for or install a newer version of the tool on startup.')
         parser.add_argument('--verbose', '-v', action='store_true',
                             help='Print every git/gh command and captured output (for debugging).')
         metadata_group = parser.add_argument_group('Project meta-data')
@@ -73,10 +75,10 @@ class Input:
         get_project_layout(self.target_repo.project_layout).validate_project_name(
             self.project_name,
         )
-        if args.override_metadata or not (self.project_path / 'metadata.json').exists():
-            self.metadata = self.collect_metadata()
-        else:
-            self.metadata = None
+        # Defer interactive collection until after the project summary is confirmed
+        # in pr_tool.py (so the user can abort before filling metadata).
+        self.override_metadata = args.override_metadata
+        self.metadata = None
 
     def collect_metadata(self, *, use_cli_args: bool = True,
                          previous: dict | None = None,

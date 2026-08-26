@@ -117,12 +117,26 @@ class Cli:
         return set()
 
     def _active_github_host(self) -> dict | None:
-        output = self.run(
-            [self.gh_executable, 'auth', 'status', '--hostname', 'github.com', '--json', 'hosts'],
-            stdout=PIPE,
-            check=True,
-        )
-        hosts = json.loads(output)['hosts']['github.com']
+        """Return the active github.com auth host entry, or ``None`` if not logged in."""
+        try:
+            output = self.run(
+                [self.gh_executable, 'auth', 'status', '--hostname', 'github.com', '--json', 'hosts'],
+                stdout=PIPE,
+                check=False,
+            )
+        except OSError:
+            return None
+        if not isinstance(output, str) or not output.strip():
+            return None
+        try:
+            payload = json.loads(output)
+        except json.JSONDecodeError:
+            return None
+        if not isinstance(payload, dict):
+            return None
+        hosts = (payload.get('hosts') or {}).get('github.com')
+        if not hosts:
+            return None
         if not isinstance(hosts, list):
             hosts = [hosts]
         return next((host for host in hosts if host.get('active')), hosts[0] if hosts else None)
@@ -134,20 +148,24 @@ class Cli:
             login = host.get('login') if host else None
             detail = host.get('error') if host else None
             print(
-                f'{ICON_ERROR} GitHub CLI is not authenticated for github.com'
+                f'{ICON_INFO} GitHub CLI is not authenticated for github.com'
                 + (f' (account: {login})' if login else '')
                 + '.',
-                file=sys.stderr,
             )
             if detail:
-                print(f'  {ICON_INFO} {detail}', file=sys.stderr)
+                print(f'  {ICON_INFO} {detail}')
             print(
-                f'  {ICON_INFO} Complete login in the browser when prompted '
-                f'(this tool uses: {self.gh_executable}).',
-                file=sys.stderr,
+                f'  {ICON_INFO} Opening browser login '
+                f'(this tool uses: {self.gh_executable})...',
             )
             self.gh(['auth', 'login', '--hostname', 'github.com', '--web',
                      '--git-protocol', 'https', '--scopes', ','.join(required_scopes)])
+            host = self._active_github_host()
+            if host is None or host.get('state') != 'success':
+                raise Exception(
+                    f'{ICON_ERROR} GitHub login did not complete. '
+                    f'Run: "{self.gh_executable}" auth login -h github.com',
+                )
             return
 
         granted = self._parse_github_scopes(host.get('scopes'))
@@ -158,6 +176,16 @@ class Cli:
             )
             self.gh(['auth', 'refresh', '--hostname', 'github.com',
                      '-s', ','.join(missing)])
+            host = self._active_github_host()
+            granted = self._parse_github_scopes(host.get('scopes') if host else None)
+            still_missing = [scope for scope in required_scopes if scope not in granted]
+            if still_missing:
+                raise Exception(
+                    f'{ICON_ERROR} GitHub token is still missing scope(s): '
+                    f'{", ".join(still_missing)}. '
+                    f'Run: "{self.gh_executable}" auth refresh -h github.com '
+                    f'-s {",".join(still_missing)}',
+                )
 
     def ensure_git_version(self) -> None:
         """Ensure that git version is enough."""

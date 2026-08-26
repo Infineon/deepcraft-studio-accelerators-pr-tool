@@ -6,6 +6,10 @@ GIT_DIR = '.git_deepcraft'
 MINIMUM_UPDATABLE_GIT_VERSION = '2.16.2'  # update-git-for-windows option
 MINIMUM_GIT_VERSION = '2.43'  # git show-ref --exists
 
+# ── Self-update ──────────────────────────────────────────────
+# Public GitHub repository hosting this tool; used to fetch newer versions.
+TOOL_REPO = 'Infineon/deepcraft-studio-accelerators-pr-tool'
+
 # Use in terminal output (print). README files use HTML ``&trade;`` instead.
 DEEPCRAFT = 'DEEPCRAFT\u2122'
 

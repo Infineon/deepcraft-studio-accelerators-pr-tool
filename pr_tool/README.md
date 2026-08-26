@@ -236,7 +236,7 @@ that run finishes.
 | `--description <text>` | Short project description (max 100 characters). |
 | `--algorithm <name>` | Accelerators only. `Classification`, `Regression`, or `Object Detection`. |
 | `--sensor <name>` | Target sensor. Run `--help` to see the suggested list. Can be passed multiple times (e.g. `--sensor Microphone --sensor Camera`) to specify more than one sensor. |
-| `--image <name>` | Image name to use directly (e.g. `Audio.png`). Skips the tag-based auto-selection and the interactive image prompt. |
+| `--image <name>` | Image name to use directly (e.g. `Audio.webp`). Skips the tag-based auto-selection and the interactive image prompt. |
 | `--tag <tag>` | Tag used to auto-pick a project image. Can be passed multiple times (e.g. `--tag audio --tag "smart home"`). Skips the interactive image prompt but not the auto-selection step. Not saved to `metadata.json`. |
 | `--override-metadata` | Regenerate `metadata.json` from the options above even if one already exists. |
 | `--verbose`, `-v` | Print every `git`/`gh` command and captured output (default is short progress lines only). |
@@ -272,7 +272,7 @@ python ./pr_tool.py \
   --algorithm Classification \
   --sensor Microphone \
   --sensor IMU \
-  --image Motion.png
+  --image Motion.webp
 ```
 
 With tags for auto-selection (skips the image prompt, auto-picks the best

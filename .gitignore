@@ -160,3 +160,6 @@ cython_debug/
 ehthumbs.db
 Thumbs.db
 Desktop.ini
+
+# PR tool self-update marker (written at runtime)
+.tool_revision

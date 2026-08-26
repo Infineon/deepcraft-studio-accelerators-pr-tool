@@ -82,6 +82,9 @@ def _collect_workflow(result: dict, previous: dict) -> list[str]:
     if workflows:
         print(f'\nWorkflow derived from project type: {", ".join(workflows)}')
     return workflows
+
+
+def _cli_dest(flag: str) -> str:
     return flag.lstrip('-').replace('-', '_')
 
 
