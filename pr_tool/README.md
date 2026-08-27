@@ -71,6 +71,8 @@ layout. The tool validates this before doing anything.
 
 Anything else at the project root will cause the tool to fail with a clear
 error message (see [Local git and Python environments](#local-git-and-python-environments)).
+Folder and file names are **case-sensitive** and must match exactly
+(e.g. `Models/`, not `models/`; `Data/`, not `data/`).
 The `Models/` and `PreprocessorTrack/` directories are tracked
 in your project but are **not** pushed to GitHub.
 

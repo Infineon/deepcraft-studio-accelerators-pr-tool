@@ -33,6 +33,7 @@ from submission_exclusions import (
 )
 from target_repo import validate_target_repos_registry
 from utils import group_files
+from project_layouts import on_disk_names_matching
 from validation import validate_loaded_metadata, validate_project_structure
 from metadata.schemas import validate_metadata_schemas
 
@@ -273,7 +274,10 @@ try:  # Always remove git_dir after this block
     cli.work_tree = repo_root
     try:
         # Handle deletions
-        ignore_paths = [f':^{project_path.name}/{dir}' for dir in target_repo.git_ignored_dirs]
+        # Use on-disk spellings so a mis-cased Models/ (e.g. models/) is still
+        # excluded from the push if validation were ever skipped.
+        ignored_dirs = on_disk_names_matching(project_path, target_repo.git_ignored_dirs)
+        ignore_paths = [f':^{project_path.name}/{dir}' for dir in ignored_dirs]
         ignore_paths.extend(build_submission_exclude_pathspecs(project_path))
         diff_names_deleted = filter_submission_paths(
             git(['diff', '--name-only', '--diff-filter=D', '--relative', '--', str(project_path), *ignore_paths], stdout=PIPE),
