@@ -48,6 +48,7 @@ def validate_metadata(
     metadata: dict,
     schema: MetadataSchema,
     project_name: str | None = None,
+    project_path: Path | None = None,
 ) -> MetadataValidationResult:
     """Validate *metadata* against *schema*, splitting missing vs choice issues."""
     result = MetadataValidationResult()
@@ -70,6 +71,8 @@ def validate_metadata(
             _validate_multi_choice(metadata, spec, result)
         elif spec.kind == 'derived_workflow':
             _validate_derived_workflow(metadata, spec, result)
+        elif spec.kind == 'derived_algorithm':
+            _validate_derived_algorithm(metadata, spec, result, project_name, project_path)
         elif spec.kind in ('accelerator_links', 'model_zoo_psoc_links'):
             _validate_links(metadata, spec, result, project_name)
         elif spec.kind == 'metrics':
@@ -82,13 +85,14 @@ def validate_loaded_metadata(
     schema: MetadataSchema,
     collect_missing: CollectMissingFn,
     project_name: str | None = None,
+    project_path: Path | None = None,
 ) -> dict:
     """Validate loaded metadata; prompt for missing fields, confirm on choice violations."""
     from metadata import confirm_metadata
 
     current = _repair_image_mirror(dict(metadata))
     while True:
-        result = validate_metadata(current, schema, project_name)
+        result = validate_metadata(current, schema, project_name, project_path)
         if result.missing or result.other:
             print(
                 f'\n{constants.ICON_WARNING} Your project\'s metadata.json is missing '
@@ -257,6 +261,55 @@ def _validate_derived_workflow(metadata: dict, spec: FieldSpec, result: Metadata
             spec,
             f'{spec.key} does not match project type '
             f'(expected {expected!r}, got {actual!r})',
+        )
+
+
+def _validate_derived_algorithm(
+    metadata: dict,
+    spec: FieldSpec,
+    result: MetadataValidationResult,
+    project_name: str | None,
+    project_path: Path | None,
+) -> None:
+    """Prefer existing algorithm; fill from ``.improj`` when missing. Apply vision defaults."""
+    if not project_name or project_path is None:
+        if not metadata.get(spec.key):
+            _mark_other(
+                result,
+                spec,
+                f'{spec.key} cannot be derived without project path and name',
+            )
+        return
+    try:
+        from metadata.improj import (
+            algorithm_from_improj,
+            apply_vision_metadata_defaults,
+        )
+        improj_algorithm = algorithm_from_improj(project_path, project_name)
+    except ValueError as exc:
+        if not metadata.get(spec.key):
+            _mark_other(result, spec, str(exc))
+        return
+
+    actual = metadata.get(spec.key)
+    if not isinstance(actual, str) or not actual.strip():
+        metadata[spec.key] = improj_algorithm
+    elif actual not in spec.choices:
+        matched = None
+        from metadata.choices import match_choice
+        matched = match_choice(actual, spec.choices)
+        if matched is not None:
+            metadata[spec.key] = matched
+        else:
+            # Keep improj value when the file has an unknown custom algorithm.
+            metadata[spec.key] = improj_algorithm
+
+    apply_vision_metadata_defaults(metadata, only_missing_kit=True)
+    if metadata.get(spec.key) not in spec.choices:
+        _mark_choice(
+            result, spec,
+            f'{spec.key}: {metadata.get(spec.key)!r} is not in the allowed list '
+            f'({_choice_list_hint(spec)})',
         )
 
 

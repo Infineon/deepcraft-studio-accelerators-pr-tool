@@ -12,6 +12,7 @@ FieldKind = Literal[
     'single_choice',
     'multi_choice',
     'derived_workflow',
+    'derived_algorithm',
     'url',
     'image',
     'image_mirror',

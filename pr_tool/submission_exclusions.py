@@ -63,9 +63,17 @@ def is_submission_excluded(path: str, env_dirs: frozenset[str] = frozenset()) ->
 
 
 def is_excluded_project_root_entry(project_path: Path, name: str) -> bool:
-    """True if a project-root name is a git/Python artefact (by name or env markers)."""
-    env_dirs = python_env_dirs(str(project_path.resolve()))
-    return is_submission_excluded(name, env_dirs) or name in env_dirs
+    """True if a project-root name is a git/Python artefact (by name or env markers).
+
+    Only inspects that root entry — does not walk the whole project tree (important
+    for large Data/ folders during layout validation).
+    """
+    if is_submission_excluded(name, frozenset()):
+        return True
+    candidate = project_path / name
+    if not candidate.is_dir():
+        return False
+    return (candidate / 'pyvenv.cfg').is_file() or (candidate / 'conda-meta').is_dir()
 
 
 def filter_submission_paths(names: str, project_path: Path) -> str:

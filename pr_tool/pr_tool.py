@@ -3,6 +3,7 @@ import os
 import shutil
 import sys
 import time
+import webbrowser
 from pathlib import Path
 from subprocess import PIPE, CalledProcessError, DEVNULL
 from tempfile import NamedTemporaryFile, TemporaryDirectory
@@ -345,6 +346,92 @@ def _upstream_url(target_repo) -> str:
     return f'{HOST}/{target_repo.base_repo}'
 
 
+def open_url_in_browser(url: str) -> bool:
+    """Open *url* in the default browser. Return True if the call appeared to succeed."""
+    if not looks_like_url(url):
+        return False
+    try:
+        return bool(webbrowser.open(url))
+    except Exception:
+        return False
+
+
+def create_pull_request_via_api(head_branch: str, project_name: str, target_repo) -> str | None:
+    """Create a PR with the REST API (more reliable than ``gh pr create`` for huge diffs)."""
+    url = _usable_gh_string(
+        gh(
+            [
+                'api',
+                f'repos/{target_repo.base_repo}/pulls',
+                '-f', f'title={target_repo.pr_title(project_name)}',
+                '-f', f'head={head_branch}',
+                '-f', f'base={MAIN_BRANCH}',
+                '--jq', '.html_url',
+            ],
+            check=False,
+            quiet_stderr=True,
+        ),
+    )
+    return url if looks_like_url(url or '') else None
+
+
+def create_pull_request_with_retries(
+    head_branch: str,
+    project_name: str,
+    target_repo,
+    *,
+    attempts: int = 3,
+    delay_s: int = 15,
+) -> str | None:
+    """Create a PR, retrying and falling back to the API when the CLI times out.
+
+    Large multi-chunk pushes often make ``gh pr create`` fail while GitHub is still
+    computing the diff; the REST create endpoint usually still works.
+    """
+    for attempt in range(1, attempts + 1):
+        cli.progress(
+            f'Creating pull request (attempt {attempt}/{attempts})...',
+        )
+        create_rc = gh([
+            'pr', 'create',
+            '--base', MAIN_BRANCH,
+            '--head', head_branch,
+            '--title', target_repo.pr_title(project_name),
+        ], check=False, quiet_stderr=True)
+        if create_rc == 0:
+            return _usable_gh_string(
+                gh(
+                    ['pr', 'view', head_branch, '--json', 'url', '--jq', '.url'],
+                    check=False,
+                    quiet_stderr=True,
+                ),
+            )
+
+        # CLI create often fails on huge file lists; try the lighter REST path.
+        cli.progress('CLI create did not succeed; trying GitHub API...')
+        api_url = create_pull_request_via_api(head_branch, project_name, target_repo)
+        if looks_like_url(api_url or ''):
+            return api_url
+
+        # Maybe the PR appeared anyway (race / partial success).
+        existing = _usable_gh_string(
+            gh(
+                ['pr', 'view', head_branch, '--json', 'url', '--jq', '.url'],
+                check=False,
+                quiet_stderr=True,
+            ),
+        )
+        if looks_like_url(existing or ''):
+            return existing
+
+        if attempt < attempts:
+            cli.progress(
+                f'GitHub may still be processing the push; retrying in {delay_s}s...',
+            )
+            time.sleep(delay_s)
+    return None
+
+
 def print_manual_pr_next_steps(user: str, head_branch: str, target_repo) -> None:
     """Tell the user how to finish the PR on GitHub when the tool could not open it."""
     fork_url = _fork_url(user, target_repo)
@@ -376,6 +463,8 @@ def open_or_create_pull_request(
 
     Returns the PR URL on success, or ``None`` when creation/lookup failed.
     Expected ``gh`` misses (no PR yet) do not dump raw CLI help to the user.
+    On create failure for large pushes, opens the GitHub compare page so the user
+    can finish in the browser without hunting for links.
     """
     print()
     print('=' * 60)
@@ -393,48 +482,52 @@ def open_or_create_pull_request(
         ),
     )
 
+    pr_url: str | None = None
     if pr_state == 'OPEN':
         cli.progress('Open PR found. Confirming it with GitHub...')
     else:
-        cli.progress('No open PR yet. Creating one (this can take a while for large pushes)...')
+        cli.progress(
+            'No open PR yet. Creating one '
+            '(large projects may need a few retries)...',
+        )
         # Do not pass --web here: open only after the URL is confirmed ready.
-        create_rc = gh([
-            'pr', 'create',
-            '--base', MAIN_BRANCH,
-            '--head', head_branch,
-            '--title', target_repo.pr_title(project_name),
-        ], check=False, quiet_stderr=True)
-        if create_rc != 0:
-            immediate = _usable_gh_string(
-                gh(
-                    ['pr', 'view', head_branch, '--json', 'url', '--jq', '.url'],
-                    check=False,
-                    quiet_stderr=True,
-                ),
-            )
-            if not looks_like_url(immediate or ''):
-                print()
-                print(f'  {ICON_ERROR} Could not create the pull request automatically.')
-                print(f'  {ICON_INFO} Your project may already be on the fork — see next steps below.')
-                print()
-                return None
-            cli.progress('PR create reported an issue, but a PR URL is already available...')
+        pr_url = create_pull_request_with_retries(
+            head_branch, project_name, target_repo,
+        )
+        if not looks_like_url(pr_url or ''):
+            compare = _pr_compare_url(head_branch, target_repo)
+            print()
+            print(f'  {ICON_ERROR} Could not create the pull request automatically.')
+            print(f'  {ICON_INFO} Opening the GitHub compare page in your browser...')
+            if open_url_in_browser(compare):
+                print(f'  {ICON_SUCCESS} Browser opened. Use "Create pull request" on that page.')
+            else:
+                print(f'  {ICON_WARNING} Could not open the browser automatically.')
+                print(f'  {ICON_INFO} Open this link instead:')
+                print(f'       {compare}')
+            print(f'  {ICON_INFO} Your project may already be on the fork — see next steps below.')
+            print()
+            return None
 
     print(f'  {ICON_INFO} Waiting for GitHub to expose the PR (up to ~5 minutes).')
     print(f'  {ICON_WARNING} Stay here — the tool will open the browser when ready.')
     print()
-    pr_url = wait_for_pull_request_url(head_branch)
+    if not looks_like_url(pr_url or ''):
+        pr_url = wait_for_pull_request_url(head_branch)
     if looks_like_url(pr_url or ''):
         cli.progress('Opening pull request in browser...')
-        gh(['pr', 'view', head_branch, '--web'], check=False, quiet_stderr=True)
+        if not open_url_in_browser(pr_url):
+            gh(['pr', 'view', head_branch, '--web'], check=False, quiet_stderr=True)
         return pr_url
 
+    compare = _pr_compare_url(head_branch, target_repo)
     print()
     print(f'  {ICON_WARNING} Timed out waiting for GitHub to expose the PR URL.')
+    print(f'  {ICON_INFO} Opening the compare page in your browser as a fallback...')
+    open_url_in_browser(compare)
     print(f'  {ICON_INFO} Your project may already be on the fork — see next steps below.')
     print()
     return None
-
 
 # ── Tool start ────────────────────────────────────────────────
 validate_target_repos_registry(TARGET_REPOS)
@@ -504,6 +597,7 @@ try:
                 only_fields=field_keys,
             ),
             project_name,
+            project_path,
         )
 
     while metadata:
@@ -522,45 +616,64 @@ try:
             print(f'{ICON_ABORT} Aborted by user.')
             sys.exit(0)
         print(f'{ICON_INFO} Restarting metadata collection... (press Enter to keep previous values)')
-        args.metadata = args.collect_metadata(use_cli_args=False, previous=metadata)
+        print(f'{ICON_INFO} Auto-filled fields (algorithm, vision sensors/kits, …) can be changed now.')
+        args.metadata = args.collect_metadata(
+            use_cli_args=False, previous=metadata, review_pass=True,
+        )
         metadata = args.metadata
-    validate_project_structure(project_name, project_path, target_repo)
+
+    # Create CLI early so layout checks and GitHub setup can show spinners/progress.
+    print()
+    print_header('Forking & Syncing Repository', icon=ICON_PROGRESS)
+    cli = Cli(verbose=args.verbose, base_repo=target_repo.base_repo)
+    cli.progress('Detecting GitHub CLI...')
+    gh_label = Path(cli.gh_executable).name if cli.gh_source == 'bundled' else cli.gh_executable
+    print(f'  GitHub CLI    : {gh_label} ({cli.gh_source}, {cli.gh_version()})')
+    if args.verbose:
+        print(f'  {ICON_INFO} Verbose mode  : on (all git/gh commands will be printed)')
+    print()
+
+    with cli.busy('Validating project folder layout'):
+        validate_project_structure(project_name, project_path, target_repo)
 except ValueError as exc:
     print(f'{ICON_ERROR} Error: {exc}', file=sys.stderr)
     sys.exit(1)
 
-print_header('Forking & Syncing Repository', icon=ICON_PROGRESS)
-print(f'  {ICON_INFO} Checking git version, authenticating, and preparing fork...')
-
-# Setup git and gh cli
-cli = Cli(verbose=args.verbose, base_repo=target_repo.base_repo)
-gh_label = Path(cli.gh_executable).name if cli.gh_source == 'bundled' else cli.gh_executable
-print(f'  GitHub CLI    : {gh_label} ({cli.gh_source}, {cli.gh_version()})')
-if args.verbose:
-    print(f'  {ICON_INFO} Verbose mode  : on (all git/gh commands will be printed)')
-print()
-
+cli.progress('Checking git version...')
 cli.ensure_git_version()
 git = cli.git
 gh = cli.gh
 # Keep prompts enabled until after auth — login/refresh need the browser flow.
+cli.progress('Checking GitHub authentication (may open a browser if needed)...')
 cli.ensure_github_auth(required_scopes=('workflow',))
 gh(['config', 'set', 'prompt', 'disabled'])
-user = gh(['api', 'user', '--jq', '.login'])
-git_name, git_email = resolve_git_identity(user)
+with cli.busy('Loading GitHub user identity'):
+    user = gh(['api', 'user', '--jq', '.login'])
+    git_name, git_email = resolve_git_identity(user)
 
 # Ensure fork exists and is in-sync with the source repo
-cli.progress('Checking fork...')
-# Capture JSON (--jq) so raw gh output is not dumped to the terminal.
-if not _usable_gh_string(
-    gh(['repo', 'view', f'{user}/{target_repo.repo_name}', '--json', 'name', '--jq', '.name'], check=False),
-):
-    cli.progress('Creating fork...')
-    fork(target_repo.base_repo)
-elif gh(['repo', 'sync', f'{user}/{target_repo.repo_name}', '--force', '--branch', MAIN_BRANCH], check=False) != 0:
-    recreate_fork_with_confirmation(user, target_repo)
+with cli.busy('Checking whether your fork exists'):
+    fork_exists = bool(
+        _usable_gh_string(
+            gh(
+                ['repo', 'view', f'{user}/{target_repo.repo_name}', '--json', 'name', '--jq', '.name'],
+                check=False,
+            ),
+        ),
+    )
+if not fork_exists:
+    with cli.busy('Creating fork on GitHub'):
+        fork(target_repo.base_repo)
 else:
-    ensure_fork_matches_upstream(user, target_repo)
+    with cli.busy('Syncing your fork main branch with Infineon'):
+        sync_ok = gh(
+            ['repo', 'sync', f'{user}/{target_repo.repo_name}', '--force', '--branch', MAIN_BRANCH],
+            check=False,
+        ) == 0
+    if not sync_ok:
+        recreate_fork_with_confirmation(user, target_repo)
+    else:
+        ensure_fork_matches_upstream(user, target_repo)
 
 cli.git_dir = git_dir = project_path.parent / GIT_DIR / target_repo.key / project_name
 tool_exit_code = 0

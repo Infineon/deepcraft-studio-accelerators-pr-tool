@@ -86,12 +86,15 @@ class Input:
 
     def collect_metadata(self, *, use_cli_args: bool = True,
                          previous: dict | None = None,
-                         only_fields: set[str] | None = None) -> dict:
+                         only_fields: set[str] | None = None,
+                         review_pass: bool = False) -> dict:
         return collect_metadata(
             self._metadata_schema,
             args=self._args,
             project_name=self.project_name,
+            project_path=self.project_path,
             use_cli_args=use_cli_args,
             previous=previous,
             only_fields=only_fields,
+            review_pass=review_pass,
         )

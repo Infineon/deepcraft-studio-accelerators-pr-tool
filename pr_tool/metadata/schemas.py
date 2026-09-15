@@ -60,11 +60,9 @@ ACCELERATORS_SCHEMA = MetadataSchema(
     repo_key='accelerators',
     fields=_SHARED_FIELDS[:3] + (
         FieldSpec(
-            'algorithm', 'Algorithm', 'single_choice',
+            'algorithm', 'Algorithm', 'derived_algorithm',
             choices=c.ALGORITHM,
-            cli_flag='--algorithm',
-            cli_help='Supervised learning algorithm.',
-            cli_choices=c.ALGORITHM,
+            allow_custom=False,
         ),
     ) + _SHARED_FIELDS[3:] + (
         FieldSpec('links', 'Project links', 'accelerator_links'),

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from argparse import Namespace
+from pathlib import Path
 from typing import Any
 
 from metadata.choices import (
@@ -19,6 +20,15 @@ from metadata.choices import (
     normalize_project_types,
     workflow_for_types,
 )
+from metadata.improj import (
+    VISION_DEVICES,
+    VISION_DOMAIN,
+    VISION_KITS,
+    VISION_SENSORS,
+    algorithm_from_improj,
+    apply_vision_metadata_defaults,
+    is_vision_algorithm,
+)
 from metadata.image_field import select_project_image
 from metadata.prompts import (
     confirm,
@@ -29,7 +39,6 @@ from metadata.prompts import (
     input_str,
 )
 from metadata.schema import FieldSpec, MetadataSchema
-
 
 def _order_metadata(metadata: dict, schema: MetadataSchema) -> dict:
     """Return metadata with keys in schema field order."""
@@ -55,19 +64,69 @@ def _apply_derived_fields(result: dict, previous: dict) -> None:
             result['device'] = derived_devices
 
 
+def _resolve_algorithm(
+    result: dict,
+    previous: dict,
+    *,
+    project_path: Path,
+    project_name: str,
+) -> str | None:
+    algorithm = result.get('algorithm') or previous.get('algorithm')
+    if is_vision_algorithm(algorithm) or (
+        isinstance(algorithm, str) and algorithm in (
+            'Classification', 'Regression', 'Object Detection', 'Image Classification',
+        )
+    ):
+        return algorithm if isinstance(algorithm, str) else None
+    try:
+        return algorithm_from_improj(project_path, project_name)
+    except ValueError:
+        return algorithm if isinstance(algorithm, str) else None
+
+
+def _vision_defaults_for_collect(
+    result: dict,
+    previous: dict,
+    *,
+    project_path: Path,
+    project_name: str,
+) -> dict | None:
+    """Vision quick-fill values, or ``None`` when this is not a vision Studio project."""
+    algorithm = _resolve_algorithm(
+        result, previous, project_path=project_path, project_name=project_name,
+    )
+    if not is_vision_algorithm(algorithm):
+        return None
+    kits = list(VISION_KITS)
+    devices = devices_for_kits(kits) or list(VISION_DEVICES)
+    return {
+        'algorithm': algorithm,
+        'sensors': list(VISION_SENSORS),
+        'domain': list(VISION_DOMAIN),
+        'kit': kits,
+        'device': devices,
+    }
+
+
 def _collect_device(
     field: FieldSpec,
     *,
     previous: dict,
     result: dict,
+    review_pass: bool,
 ) -> list[str]:
     kits = result.get('kit') or previous.get('kit')
+    derived = None
     if isinstance(kits, list) and kits:
         derived = devices_for_kits(kits)
-        if derived is not None:
-            print(f'\nDevice(s) derived from kit: {", ".join(derived)}')
-            return derived
     default = previous.get(field.key) if isinstance(previous.get(field.key), list) else None
+    if derived is not None and not default:
+        default = derived
+    if derived is not None and not review_pass:
+        print(f'\nDevice(s) derived from kit: {", ".join(derived)}')
+        return derived
+    if review_pass:
+        print('\n(Press Enter to keep the default; or pick other device(s) from the list.)')
     return input_choices(
         field.label,
         list(field.choices),
@@ -83,6 +142,28 @@ def _collect_workflow(result: dict, previous: dict) -> list[str]:
         print(f'\nWorkflow derived from project type: {", ".join(workflows)}')
     return workflows
 
+
+def _collect_algorithm(
+    field: FieldSpec,
+    *,
+    project_path: Path,
+    project_name: str,
+    previous: dict,
+    review_pass: bool,
+) -> str:
+    derived = algorithm_from_improj(project_path, project_name)
+    if not review_pass:
+        print(f'\nAlgorithm derived from {project_name}.improj ProjectType: {derived}')
+        return derived
+    default = previous.get(field.key) if isinstance(previous.get(field.key), str) else derived
+    print(f'\nDefault from {project_name}.improj ProjectType: {derived}')
+    print('(Press Enter to keep the default, or pick another algorithm.)')
+    return input_choice(
+        field.label,
+        list(field.choices),
+        default=default,
+        allow_custom=False,
+    )
 
 def _cli_dest(flag: str) -> str:
     return flag.lstrip('-').replace('-', '_')
@@ -196,9 +277,17 @@ def _collect_field(
     previous: dict,
     result: dict,
     project_name: str,
+    project_path: Path,
+    review_pass: bool,
 ) -> Any:
     prev_value = previous.get(field.key)
     cli = _cli_value(args, field) if use_cli_args else None
+    vision = _vision_defaults_for_collect(
+        result,
+        previous,
+        project_path=project_path,
+        project_name=project_name,
+    )
 
     if field.kind == 'image_mirror':
         return result.get('thumbnail_image_id', prev_value)
@@ -206,8 +295,22 @@ def _collect_field(
     if field.kind == 'derived_workflow':
         return _collect_workflow(result, previous)
 
+    if field.kind == 'derived_algorithm':
+        return _collect_algorithm(
+            field,
+            project_path=project_path,
+            project_name=project_name,
+            previous=previous,
+            review_pass=review_pass,
+        )
+
     if field.key == 'device':
-        return _collect_device(field, previous=previous, result=result)
+        if vision is not None and not review_pass:
+            print(f'\nDevice(s) derived from vision ProjectType: {", ".join(vision["device"])}')
+            return list(vision['device'])
+        return _collect_device(
+            field, previous=previous, result=result, review_pass=review_pass,
+        )
 
     if field.kind == 'brand':
         return _collect_brand(previous)
@@ -239,6 +342,25 @@ def _collect_field(
             allow_custom=field.allow_custom,
         )
     if field.kind == 'multi_choice':
+        if field.key in ('sensors', 'domain', 'kit') and vision is not None:
+            auto_value = list(vision[field.key])
+            if not review_pass:
+                label = {
+                    'sensors': 'Sensor(s)',
+                    'domain': 'Domain',
+                    'kit': 'Kit(s)',
+                }[field.key]
+                print(f'\n{label} derived from vision ProjectType: {", ".join(auto_value)}')
+                return auto_value
+            default = prev_value if isinstance(prev_value, list) and prev_value else auto_value
+            print(f'\nVision ProjectType default: {", ".join(auto_value)}')
+            print('(Press Enter to keep the default, or pick other value(s) from the list.)')
+            return input_choices(
+                field.label,
+                list(field.choices),
+                default=default,
+                allow_custom=field.allow_custom,
+            )
         if field.key == 'type':
             default = normalize_project_types(prev_value) or None
         else:
@@ -274,11 +396,18 @@ def collect_metadata(
     *,
     args: Namespace,
     project_name: str,
+    project_path: Path,
     use_cli_args: bool = True,
     previous: dict | None = None,
     only_fields: set[str] | None = None,
+    review_pass: bool = False,
 ) -> dict:
-    """Build metadata dict following ``schema`` field order and rules."""
+    """Build metadata dict following ``schema`` field order and rules.
+
+    *review_pass*: when True (user chose to re-edit after the overview), auto-derived
+    fields such as algorithm / vision sensors / kits are prompted with defaults so
+    the user can change them.
+    """
     previous = previous or {}
     result: dict = dict(previous)
     for field in schema.fields:
@@ -291,6 +420,8 @@ def collect_metadata(
             previous=previous,
             result=result,
             project_name=project_name,
+            project_path=project_path,
+            review_pass=review_pass,
         )
         if field.kind == 'brand':
             result['brand_image_id'] = value.brand_image_id

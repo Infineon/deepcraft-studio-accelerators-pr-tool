@@ -131,14 +131,12 @@ When metadata is ready, the tool shows a preview and asks:
 * **n** &ndash; re-enter metadata (previous values are kept as defaults).
 * **a** &ndash; abort without saving.
 
-When the push completes, the tool creates or reuses the pull request, waits
-until GitHub exposes it (up to about 5 minutes), then opens it in the browser
-and prints the PR URL. If that automatic step fails (common right after very
-large pushes), your project is usually already on the fork — open your fork or
-the Infineon repo in the browser; GitHub typically shows a banner with a
-**Compare & pull request** button. The tool also prints those links (plus a
-direct compare URL) so you can finish in a click without reading raw ``gh``
-errors.
+When the push completes, the tool creates or reuses the pull request (retrying
+and using the GitHub API when ``gh pr create`` struggles with very large
+diffs), waits until GitHub exposes it (up to about 5 minutes), then opens it
+in the browser and prints the PR URL. If that automatic step still fails, it
+opens the GitHub compare page so you can click **Create pull request**, and
+also prints fork/repo links plus the compare URL.
 
 ### Interactive metadata
 
@@ -154,7 +152,7 @@ your selected `--repo`.
 | **Brand** | Infineon, a listed partner, or **New Brand/Partner** (custom image + URL). |
 | **Links** | Filled automatically (accelerators: Studio + GitHub; model-zoo: GitHub). |
 | **Image** | Auto-pick from `images.json` by tags, or choose interactively. `--image` / `--tag` skip the prompt. |
-| **Accelerators only** | `algorithm` required. |
+| **Accelerators only** | First pass: `algorithm` from `{Project}.improj` `<ProjectType>`; for `ObjectDetection` / `ImageClassification` also auto-sets `sensors=Camera`, `domain=Vision`, and Edge kit/device. After the metadata overview, choose **n** to re-edit every field (including those defaults). |
 | **Model zoo only** | `metrics` optional (fixed labels, you enter values). |
 
 All fields are required except `metrics` on `model-zoo-psoc`.
@@ -247,7 +245,6 @@ that run finishes.
 | `--name <CamelCaseName>` | Override the project name (defaults to the directory name). Also becomes the branch name on GitHub. |
 | `--title <text>` | Project title (max 40 characters). |
 | `--description <text>` | Short project description (max 100 characters). |
-| `--algorithm <name>` | Accelerators only. `Classification`, `Regression`, or `Object Detection`. |
 | `--sensor <name>` | Target sensor. Run `--help` to see the suggested list. Can be passed multiple times (e.g. `--sensor Microphone --sensor Camera`) to specify more than one sensor. |
 | `--image <name>` | Image name to use directly (e.g. `Audio.webp`). Skips the tag-based auto-selection and the interactive image prompt. |
 | `--tag <tag>` | Tag used to auto-pick a project image. Can be passed multiple times (e.g. `--tag audio --tag "smart home"`). Skips the interactive image prompt but not the auto-selection step. Not saved to `metadata.json`. |
@@ -270,7 +267,6 @@ python ./pr_tool.py \
   --path C:\Projects\MyAudioClassifier \
   --title "My audio classifier" \
   --description "Detects three types of household sounds" \
-  --algorithm Classification \
   --sensor Microphone
 ```
 
@@ -282,7 +278,6 @@ python ./pr_tool.py \
   --path C:\Projects\MyMultiModalDetector \
   --title "Multi-modal detector" \
   --description "Combines audio and motion signals" \
-  --algorithm Classification \
   --sensor Microphone \
   --sensor IMU \
   --image Motion.webp
@@ -297,7 +292,6 @@ python ./pr_tool.py \
   --path C:\Projects\MyMultiModalDetector \
   --title "Multi-modal detector" \
   --description "Combines audio and motion signals" \
-  --algorithm Classification \
   --sensor Microphone \
   --sensor IMU \
   --tag audio \
