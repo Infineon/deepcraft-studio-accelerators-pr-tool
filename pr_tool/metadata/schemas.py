@@ -56,6 +56,10 @@ _SHARED_FIELDS: tuple[FieldSpec, ...] = (
     FieldSpec('brand', 'Brand', 'brand'),
 )
 
+_VIDEOS_FIELD = FieldSpec(
+    'videos', 'Videos', 'videos', required=False,
+)
+
 ACCELERATORS_SCHEMA = MetadataSchema(
     repo_key='accelerators',
     fields=_SHARED_FIELDS[:3] + (
@@ -66,6 +70,7 @@ ACCELERATORS_SCHEMA = MetadataSchema(
         ),
     ) + _SHARED_FIELDS[3:] + (
         FieldSpec('links', 'Project links', 'accelerator_links'),
+        _VIDEOS_FIELD,
     ),
 )
 
@@ -73,6 +78,7 @@ MODEL_ZOO_PSOC_SCHEMA = MetadataSchema(
     repo_key='model-zoo-psoc',
     fields=_SHARED_FIELDS + (
         FieldSpec('links', 'Project links', 'model_zoo_psoc_links'),
+        _VIDEOS_FIELD,
         FieldSpec('metrics', 'Performance metrics', 'metrics', required=False),
     ),
 )

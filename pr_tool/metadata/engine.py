@@ -6,6 +6,7 @@ from argparse import Namespace
 from pathlib import Path
 from typing import Any
 
+import constants
 from metadata.choices import (
     Brand,
     INFINEON_BRAND,
@@ -35,10 +36,12 @@ from metadata.prompts import (
     input_choice,
     input_choices,
     input_grouped_choice,
+    input_html_text,
     input_metric_value,
     input_str,
 )
 from metadata.schema import FieldSpec, MetadataSchema
+from metadata.video_link import video_link_error
 
 def _order_metadata(metadata: dict, schema: MetadataSchema) -> dict:
     """Return metadata with keys in schema field order."""
@@ -235,6 +238,90 @@ def _metrics_by_label(metrics: list[dict] | None) -> dict[str, str]:
     return by_label
 
 
+def _normalize_videos(value: Any) -> list[dict] | None:
+    if not isinstance(value, list) or not value:
+        return None
+    videos: list[dict] = []
+    for entry in value:
+        if not isinstance(entry, dict):
+            continue
+        title = entry.get('title')
+        description = entry.get('description')
+        link = entry.get('link')
+        if not all(isinstance(item, str) and item.strip() for item in (title, description, link)):
+            continue
+        videos.append({
+            'title': title.strip(),
+            'description': description.strip(),
+            'link': link.strip(),
+        })
+    return videos or None
+
+
+def _collect_video_link(default: str | None = None) -> str:
+    print(
+        '  Single video URL only (for example https://youtu.be/...). '
+        'Playlists and regular web pages are not allowed.',
+    )
+    while True:
+        link = input_str('Video link', default=default)
+        error = video_link_error(link)
+        if error is None:
+            return link
+        print(f'{constants.ICON_WARNING} {error}')
+
+
+def _collect_videos(previous: dict) -> list[dict] | None:
+    existing = _normalize_videos(previous.get('videos'))
+    if existing is not None:
+        print('\nExisting videos:')
+        for index, video in enumerate(existing, start=1):
+            print(f'  {index}. {video["title"]} — {video["link"]}')
+        link_errors = [
+            f'{index}. {video["link"]}: {error}'
+            for index, video in enumerate(existing, start=1)
+            if (error := video_link_error(video['link']))
+        ]
+        if link_errors:
+            print(f'{constants.ICON_WARNING} Existing video links are not single-video URLs:')
+            for error in link_errors:
+                print(f'  {error}')
+        elif confirm('Keep existing videos?'):
+            return existing
+    if not confirm('Add videos? (optional — answer n to skip)'):
+        return None
+    videos: list[dict] = []
+    index = 1
+    previous_entries = existing or []
+    while True:
+        defaults = previous_entries[index - 1] if index <= len(previous_entries) else {}
+        print(f'\nVideo {index}')
+        title = input_str(
+            'Video title',
+            default=defaults.get('title') if isinstance(defaults.get('title'), str) else None,
+        )
+        description = input_str(
+            'Video description',
+            default=(
+                defaults.get('description')
+                if isinstance(defaults.get('description'), str)
+                else None
+            ),
+        )
+        link = _collect_video_link(
+            defaults.get('link') if isinstance(defaults.get('link'), str) else None,
+        )
+        videos.append({
+            'title': title,
+            'description': description,
+            'link': link,
+        })
+        if not confirm('Add another video?'):
+            break
+        index += 1
+    return videos or None
+
+
 def _collect_metrics(previous: dict) -> list[dict] | None:
     existing = previous.get('metrics')
     if existing is not None and confirm('Keep existing performance metrics?'):
@@ -322,7 +409,7 @@ def _collect_field(
             default=prev_value if isinstance(prev_value, str) else None,
         )
     if field.kind == 'long_text':
-        return cli or input_str(
+        return cli or input_html_text(
             field.label,
             field.max_length,
             default=prev_value if isinstance(prev_value, str) else None,
@@ -379,6 +466,8 @@ def _collect_field(
         return accelerator_links(project_name)
     if field.kind == 'model_zoo_psoc_links':
         return model_zoo_psoc_links(project_name, _kits_for_links(result, previous))
+    if field.kind == 'videos':
+        return _collect_videos(previous)
     if field.kind == 'metrics':
         return _collect_metrics(previous)
     raise ValueError(f'Unknown field kind: {field.kind!r}')

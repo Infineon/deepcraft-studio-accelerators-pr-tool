@@ -19,6 +19,7 @@ FieldKind = Literal[
     'brand',
     'accelerator_links',
     'model_zoo_psoc_links',
+    'videos',
     'metrics',
 ]
 

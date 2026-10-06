@@ -34,6 +34,10 @@ just re-run it after making changes to your project.
 No additional Python packages are required &mdash; the tool only uses the
 standard library.
 
+On startup the tool checks GitHub and updates itself to the latest published
+copy, unless you pass `--no-update` or you are running from a git checkout
+(use `git pull` in that case). A failed update does not stop the run.
+
 Project image names and tags are read from **`pr_tool/images.json` only**
 (shipped with the tool). The catalog is not downloaded from the network.
 
@@ -146,16 +150,18 @@ your selected `--repo`.
 
 | Topic | Behaviour |
 | --- | --- |
-| **Choices** (sensors, domain, kit, …) | Pick by number from the AI Hub list, or type a custom value (one confirmation). Custom text is title-cased (`smart home` → `Smart Home`). |
+| **Long description** | Multiline **plain text** is stored as-is. **Markdown** is converted to HTML after validation (headings, lists, `**bold**`, `*italic*`, http(s) `[links](url)`). **Text HTML** is validated (allowed tags only, tags must match, no images/scripts). End input with a line containing only `END`. |
+| **Choices** (sensors, domain, kit, …) | Pick by number from the AI Hub list, or type a custom value (one confirmation). Custom text is title-cased (`smart home` → `Smart Home`). **Application**, **project type**, and **algorithm** must be chosen from the list. |
 | **Kit → device** | Device is derived from kit(s); custom kit names prompt for device. |
 | **Type → workflow** | Pick one or both types (`1,2`); workflow is set automatically. |
 | **Brand** | Infineon, a listed partner, or **New Brand/Partner** (custom image + URL). |
 | **Links** | Filled automatically (accelerators: Studio + GitHub; model-zoo: GitHub). |
+| **Videos** | Optional. Each entry needs `title`, `description`, and a **single-video** `link` (YouTube, Vimeo, Dailymotion, Wistia, Loom, or a direct video file). YouTube playlists, other collections, and regular web pages are rejected. Skip if the project has no videos. |
 | **Image** | Auto-pick from `images.json` by tags, or choose interactively. `--image` / `--tag` skip the prompt. |
 | **Accelerators only** | First pass: `algorithm` from `{Project}.improj` `<ProjectType>`; for `ObjectDetection` / `ImageClassification` also auto-sets `sensors=Camera`, `domain=Vision`, and Edge kit/device. After the metadata overview, choose **n** to re-edit every field (including those defaults). |
 | **Model zoo only** | `metrics` optional (fixed labels, you enter values). |
 
-All fields are required except `metrics` on `model-zoo-psoc`.
+All fields are required except **videos** (both repos) and **metrics** on `model-zoo-psoc`.
 
 If **`metadata.json` already exists**, the tool loads it first: missing fields
 are prompted; values not in the AI Hub–based suggested lists show a warning
@@ -249,6 +255,7 @@ that run finishes.
 | `--image <name>` | Image name to use directly (e.g. `Audio.webp`). Skips the tag-based auto-selection and the interactive image prompt. |
 | `--tag <tag>` | Tag used to auto-pick a project image. Can be passed multiple times (e.g. `--tag audio --tag "smart home"`). Skips the interactive image prompt but not the auto-selection step. Not saved to `metadata.json`. |
 | `--override-metadata` | Regenerate `metadata.json` from the options above even if one already exists. |
+| `--no-update` | Skip the startup check for a newer version of this tool. |
 | `--verbose`, `-v` | Print every `git`/`gh` command and captured output (default is short progress lines only). |
 
 For the complete list of options, run:

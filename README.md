@@ -36,6 +36,7 @@ GitHub auth, fork sync, branching, push, and opens the PR in your browser.
 | **`scripts/parse_master_json.py`** | Fetches the DEEPCRAFT AI Hub `master.json` (or reads a local copy) and prints unique catalog values for `domain`, `application`, `use_case`, `kit`, `device`, and brand fields. Use the output to update `metadata/choices.py` manually. |
 | **`pr_tool/README.md`** | End-user documentation: step-by-step usage, metadata behaviour, CLI flags, examples, troubleshooting. |
 | **`pr_tool/pr_tool.py`** | Main entry point. Orchestrates project summary, metadata collection/review, git/gh setup, fork sync, sparse clone, chunked push, and PR creation. Validates registries at import time. |
+| **`pr_tool/updater.py`** | On startup, updates a non-git copy of the tool to the latest `main` commit (skipped for git checkouts, `--no-update`, or when `BASE_REPO_OWNER` is not `Infineon`). |
 | **`pr_tool/cli.py`** | `Cli` class wrapping `git` and `gh` subprocess calls. Resolves bundled vs system `gh`, enforces minimum git version, handles auth refresh, and prints commands when `--verbose` is set. |
 | **`pr_tool/constants.py`** | Shared settings: `TARGET_REPOS` registry, git/GitHub defaults, UI icons, column padding for choice prompts. |
 | **`pr_tool/target_repo.py`** | `TargetRepo` dataclass (repo name, PR title template, layout key, ignored push dirs) and registry validation against known layouts. |
@@ -50,10 +51,13 @@ GitHub auth, fork sync, branching, push, and opens the PR in your browser.
 | **`pr_tool/LICENSE`** | License text for the tool distribution. |
 | **`pr_tool/metadata/__init__.py`** | Public metadata API: `collect_metadata`, `finalize_metadata`, `format_metadata_json`, `get_metadata_schema`. |
 | **`pr_tool/metadata/schema.py`** | `FieldSpec` and `MetadataSchema` types, field kinds, CLI flag registration per field. |
-| **`pr_tool/metadata/schemas.py`** | Per-repo metadata schemas (`SCHEMAS`). Defines field order and composition for accelerators vs model-zoo (`_SHARED_FIELDS`, algorithm, links, metrics). |
+| **`pr_tool/metadata/schemas.py`** | Per-repo metadata schemas (`SCHEMAS`). Defines field order and composition for accelerators vs model-zoo (`_SHARED_FIELDS`, algorithm, links, videos, metrics). |
 | **`pr_tool/metadata/choices.py`** | Suggested values (sensors, domain, kit, …), brand definitions, kit→device and type→workflow mappings, and link builders for each repo. |
-| **`pr_tool/metadata/engine.py`** | Walks the schema to collect metadata interactively: derived device/workflow, brand handling, link generation, schema-ordered output. |
+| **`pr_tool/metadata/engine.py`** | Walks the schema to collect metadata interactively: derived device/workflow/algorithm, brand handling, links, optional videos, schema-ordered output. |
+| **`pr_tool/metadata/improj.py`** | Reads `{Project}.improj` `<ProjectType>` and maps it to `algorithm` (and vision defaults for object detection / image classification). |
 | **`pr_tool/metadata/prompts.py`** | Interactive prompts (`input_str`, `input_choice`, `input_choices`, confirmations) including custom-value title-casing. |
+| **`pr_tool/metadata/long_description.py`** | Keeps plain long-description text as-is; converts Markdown to HTML; validates Markdown and text HTML (allowed tags, matching tags, safe links; no images/scripts). |
+| **`pr_tool/metadata/video_link.py`** | Accepts a single video URL (YouTube, Vimeo, Dailymotion, Wistia, Loom, or a direct video file). Rejects playlists, collections, channels, and regular web pages. |
 | **`pr_tool/metadata/format.py`** | Pretty-prints `metadata.json` with keys in schema order. |
 | **`pr_tool/metadata/image_field.py`** | Interactive and CLI-driven project image selection (`--image`, `--tag`, or pick from catalog). |
 
@@ -90,6 +94,9 @@ folder name.
 | Folder / name rules | `project_layouts.py` |
 | Git/Python paths excluded from push | `submission_exclusions.py` |
 | New field *kind* (rare) | `metadata/schema.py`, `engine.py`, `validation.py` |
+| Long description text → HTML | `metadata/long_description.py` (Markdown only; plain text is unchanged) |
+| Video link checks | `metadata/video_link.py` |
+| Algorithm from `.improj` | `metadata/improj.py`, `engine.py` |
 | Git / PR flow | `pr_tool.py`, `cli.py` |
 
 ### Add a target repository
@@ -109,9 +116,12 @@ Edit `metadata/schemas.py`. Fields are `FieldSpec(key, label, kind, …)`; **tup
 | `text`, `long_text` | Free text |
 | `single_choice`, `multi_choice` | From `choices=`; optional `cli_flag` |
 | `derived_workflow` | Auto from `type` |
+| `derived_algorithm` | Auto from `{Project}.improj` `<ProjectType>` (accelerators) |
+| `url` | Single URL |
 | `image` / `image_mirror` | Thumbnail; mirror sets `main_image_id` |
 | `brand` | Sets `brand_image_id` + `brand_url` |
 | `accelerator_links`, `model_zoo_psoc_links` | Auto link arrays |
+| `videos` | Optional list of `{title, description, link}` (single video URL; no playlists or regular pages) |
 | `metrics` | Optional labelled metrics (model-zoo) |
 
 ### Update choice lists
