@@ -73,7 +73,7 @@ def validate_metadata(
             _validate_derived_workflow(metadata, spec, result)
         elif spec.kind == 'derived_algorithm':
             _validate_derived_algorithm(metadata, spec, result, project_name, project_path)
-        elif spec.kind in ('accelerator_links', 'model_zoo_psoc_links'):
+        elif spec.kind in ('accelerator_links', 'model_zoo_psoc_links', 'model_zoo_aurix_links'):
             _validate_links(metadata, spec, result, project_name)
         elif spec.kind == 'videos':
             _validate_videos(metadata, spec, result)
@@ -370,7 +370,10 @@ def _validate_links(
         if not isinstance(link, dict):
             _mark_missing(result, spec, f'links[{index}] must be an object')
             return
-        for key in ('label', 'url', 'heading', 'sub-heading'):
+        required_keys = ('label', 'url')
+        if spec.kind != 'model_zoo_aurix_links' or link.get('label') != 'GitHub':
+            required_keys = ('label', 'url', 'heading', 'sub-heading')
+        for key in required_keys:
             if not isinstance(link.get(key), str) or not link[key].strip():
                 _mark_missing(result, spec, f'links[{index}] missing or empty {key!r}')
                 return

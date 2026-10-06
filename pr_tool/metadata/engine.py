@@ -18,6 +18,7 @@ from metadata.choices import (
     devices_for_kits,
     is_known_brand_image,
     model_zoo_psoc_links,
+    model_zoo_aurix_links,
     normalize_project_types,
     workflow_for_types,
 )
@@ -366,15 +367,18 @@ def _collect_field(
     project_name: str,
     project_path: Path,
     review_pass: bool,
+    vision_defaults: bool,
 ) -> Any:
     prev_value = previous.get(field.key)
     cli = _cli_value(args, field) if use_cli_args else None
-    vision = _vision_defaults_for_collect(
-        result,
-        previous,
-        project_path=project_path,
-        project_name=project_name,
-    )
+    vision = None
+    if vision_defaults:
+        vision = _vision_defaults_for_collect(
+            result,
+            previous,
+            project_path=project_path,
+            project_name=project_name,
+        )
 
     if field.kind == 'image_mirror':
         return result.get('thumbnail_image_id', prev_value)
@@ -452,20 +456,28 @@ def _collect_field(
             default = normalize_project_types(prev_value) or None
         else:
             default = prev_value if isinstance(prev_value, list) else None
+        if field.join_values and not default:
+            default = list(field.choices)
         if cli:
-            return list(cli)
-        return input_choices(
-            field.label,
-            list(field.choices),
-            default=default,
-            allow_custom=field.allow_custom,
-        )
+            chosen = list(cli)
+        else:
+            chosen = input_choices(
+                field.label,
+                list(field.choices),
+                default=default,
+                allow_custom=field.allow_custom,
+            )
+        if field.join_values:
+            return [', '.join(chosen)]
+        return chosen
     if field.kind == 'image':
         return _collect_image(args, use_cli_args=use_cli_args, previous=previous)
     if field.kind == 'accelerator_links':
         return accelerator_links(project_name)
     if field.kind == 'model_zoo_psoc_links':
         return model_zoo_psoc_links(project_name, _kits_for_links(result, previous))
+    if field.kind == 'model_zoo_aurix_links':
+        return model_zoo_aurix_links(project_name)
     if field.kind == 'videos':
         return _collect_videos(previous)
     if field.kind == 'metrics':
@@ -473,10 +485,23 @@ def _collect_field(
     raise ValueError(f'Unknown field kind: {field.kind!r}')
 
 
+def _join_choice_fields(result: dict, schema: MetadataSchema) -> None:
+    """Store selected values as one comma-separated entry when the schema asks for it."""
+    for field in schema.fields:
+        if not field.join_values:
+            continue
+        values = result.get(field.key)
+        if field.key == 'type':
+            values = normalize_project_types(values)
+        if isinstance(values, list) and values:
+            result[field.key] = [', '.join(values)]
+
+
 def finalize_metadata(metadata: dict, schema: MetadataSchema) -> dict:
     """Apply derived fields and return metadata in schema key order."""
     result = dict(metadata)
     _apply_derived_fields(result, metadata)
+    _join_choice_fields(result, schema)
     return _order_metadata(result, schema)
 
 
@@ -511,6 +536,9 @@ def collect_metadata(
             project_name=project_name,
             project_path=project_path,
             review_pass=review_pass,
+            vision_defaults=any(
+                spec.kind == 'derived_algorithm' for spec in schema.fields
+            ),
         )
         if field.kind == 'brand':
             result['brand_image_id'] = value.brand_image_id

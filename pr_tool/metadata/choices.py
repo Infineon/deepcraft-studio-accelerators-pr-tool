@@ -142,6 +142,7 @@ USE_CASE = (
     'Cough Detection',
     'Defect Detection',
     'Driver Assistance',
+    'Driver Monitoring',
     'Emergency Vehicle Siren Detection',
     'Entrance Counting',
     'Entry and Exit Detection',
@@ -176,6 +177,7 @@ USE_CASE = (
     'PPE Detection',
     'Predictive Maintenance',
     'Presence Detection',
+    'Rain Drop Classification',
     'Road Navigation',
     'Road Users Detection',
     'Smart Security Monitoring',
@@ -191,6 +193,7 @@ USE_CASE = (
     'Traffic Sign Recognition',
     'Trajectory Control',
     'Vehicle Detection',
+    'Vehicle Tracking',
     'Virtual Winding Temperature Estimation',
     'Voice Recognition',
     'Wake Word Detection',
@@ -203,6 +206,7 @@ KIT = (
     'AURIX\u2122 KIT_A2G_TC375_LITE',
     'AURIX\u2122 KIT_A3G_TC4D7_LITE',
     'AURIX\u2122 TC4x STD Triboard',
+    'TRAVEO\u2122 T2G Body EntryLite Kit KIT_T2G-B-E_LITE',
     'XENSIV\u2122 KIT_CSK_BGT60TR13C',
     'PSOC\u2122 4100S Max Pioneer Kit',
     'PSOC\u2122 6 AI Kit',
@@ -215,6 +219,7 @@ KIT = (
 DEVICE = (
     'AURIX\u2122 TC3x',
     'AURIX\u2122 TC4x',
+    'TRAVEO\u2122 T2G body entry',
     'XENSIV\u2122 Radar BGT60TR13C',
     'XENSIV\u2122 Sensor',
     'PSOC\u2122 4',
@@ -237,7 +242,8 @@ KIT_TO_DEVICE: dict[str, str] = {
     'AURIX\u2122 KIT_A2G_TC375_LITE': 'AURIX\u2122 TC3x',
     'AURIX\u2122 KIT_A3G_TC4D7_LITE': 'AURIX\u2122 TC4x',
     'AURIX\u2122 TC4x STD Triboard': 'AURIX\u2122 TC4x',
-    'KIT_CSK_BGT60TR13C': 'BGT60TR13C',
+    'TRAVEO\u2122 T2G Body EntryLite Kit KIT_T2G-B-E_LITE': 'TRAVEO\u2122 T2G body entry',
+    'XENSIV\u2122 KIT_CSK_BGT60TR13C': 'XENSIV\u2122 Radar BGT60TR13C',
     'PSOC\u2122 4100S Max Pioneer Kit': 'PSOC\u2122 4',
     'PSOC\u2122 6 AI Kit': 'PSOC\u2122 6',
     'PSOC\u2122 6 Pioneer Kit': 'PSOC\u2122 6',
@@ -251,8 +257,18 @@ def normalize_project_types(value: str | list[str] | None) -> list[str]:
     if value is None:
         return []
     if isinstance(value, str):
-        return [value] if value.strip() else []
-    return [item for item in value if isinstance(item, str) and item.strip()]
+        raw_items = [value]
+    elif isinstance(value, list):
+        raw_items = [item for item in value if isinstance(item, str) and item.strip()]
+    else:
+        return []
+    expanded: list[str] = []
+    for item in raw_items:
+        for part in item.split(','):
+            part = part.strip()
+            if part and part not in expanded:
+                expanded.append(part)
+    return expanded
 
 
 def workflow_for_types(types: list[str]) -> list[str]:
@@ -405,5 +421,44 @@ def model_zoo_psoc_links(project_name: str, kits: list[str]) -> list[dict]:
             **MODEL_ZOO_PSOC_GITHUB_LINK,
             'url': MODEL_ZOO_PSOC_GITHUB_URL.format(project_name=project_name),
             'sub-heading': f'{MODEL_ZOO_PSOC_GITHUB_SUBHEADING_PREFIX}{kit_name}',
+        },
+    ]
+
+
+# ── Model zoo AURIX metadata links (fixed entries for metadata.json) ───────
+
+AURIX_MODEL_ZOO_LINK = {
+    'label': 'Model Zoo',
+    'url': 'https://github.com/Infineon/deepcraft-model-zoo-for-aurix',
+    'heading': 'Model Zoo for AURIX\u2122',
+    'sub-heading': (
+        'Find your tools & Learn about getting started with developing Edge AI for AURIX\u2122'
+    ),
+}
+
+AURIX_GITHUB_URL = (
+    'https://github.com/Infineon/deepcraft-model-zoo-for-aurix/tree/main/{project_name}'
+)
+
+AURIX_KIT = (
+    'AURIX\u2122 KIT_A2G_TC375_LITE',
+    'AURIX\u2122 KIT_A3G_TC4D7_LITE',
+    'TRAVEO\u2122 T2G Body EntryLite Kit KIT_T2G-B-E_LITE',
+)
+
+AURIX_DEVICE = (
+    'AURIX\u2122 TC3x',
+    'AURIX\u2122 TC4x',
+    'TRAVEO\u2122 T2G body entry',
+)
+
+
+def model_zoo_aurix_links(project_name: str) -> list[dict]:
+    """Build Model Zoo + GitHub ``links`` entries for model-zoo-aurix metadata.json."""
+    return [
+        dict(AURIX_MODEL_ZOO_LINK),
+        {
+            'label': 'GitHub',
+            'url': AURIX_GITHUB_URL.format(project_name=project_name),
         },
     ]

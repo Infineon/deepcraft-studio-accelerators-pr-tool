@@ -1,5 +1,7 @@
 """Per-repository metadata schemas."""
 
+from dataclasses import replace
+
 from metadata import choices as c
 from metadata.schema import FieldSpec, MetadataSchema
 
@@ -83,9 +85,41 @@ MODEL_ZOO_PSOC_SCHEMA = MetadataSchema(
     ),
 )
 
+def _shared(key: str) -> FieldSpec:
+    for field in _SHARED_FIELDS:
+        if field.key == key:
+            return field
+    raise KeyError(key)
+
+
+MODEL_ZOO_AURIX_SCHEMA = MetadataSchema(
+    repo_key='model-zoo-aurix',
+    fields=_SHARED_FIELDS[:3] + (
+        FieldSpec(
+            'algorithm', 'Algorithm', 'single_choice',
+            choices=c.ALGORITHM,
+            allow_custom=False,
+        ),
+        _shared('sensors'),
+        _shared('domain'),
+        _shared('application'),
+        _shared('use_case'),
+        replace(_shared('kit'), choices=c.AURIX_KIT),
+        replace(_shared('device'), choices=c.AURIX_DEVICE),
+        replace(_shared('type'), join_values=True),
+        _shared('workflow'),
+        _shared('thumbnail_image_id'),
+        _shared('main_image_id'),
+        _shared('brand'),
+        FieldSpec('links', 'Project links', 'model_zoo_aurix_links'),
+        _VIDEOS_FIELD,
+    ),
+)
+
 SCHEMAS: dict[str, MetadataSchema] = {
     ACCELERATORS_SCHEMA.repo_key: ACCELERATORS_SCHEMA,
     MODEL_ZOO_PSOC_SCHEMA.repo_key: MODEL_ZOO_PSOC_SCHEMA,
+    MODEL_ZOO_AURIX_SCHEMA.repo_key: MODEL_ZOO_AURIX_SCHEMA,
 }
 
 

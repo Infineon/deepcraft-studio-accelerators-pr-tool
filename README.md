@@ -7,6 +7,7 @@ contributors open pull requests against Infineon DEEPCRAFT&trade; GitHub repos:
 | --- | --- |
 | `accelerators` | [deepcraft-studio-accelerators](https://github.com/Infineon/deepcraft-studio-accelerators) |
 | `model-zoo-psoc` | [deepcraft-model-zoo-for-psoc](https://github.com/Infineon/deepcraft-model-zoo-for-psoc) |
+| `model-zoo-aurix` | [deepcraft-model-zoo-for-aurix](https://github.com/Infineon/deepcraft-model-zoo-for-aurix) — writes `metadata.json` only; does not open a pull request |
 
 **End users:** see [`pr_tool/README.md`](pr_tool/README.md) for full usage,
 options, project layouts, and troubleshooting.
@@ -40,7 +41,7 @@ GitHub auth, fork sync, branching, push, and opens the PR in your browser.
 | **`pr_tool/cli.py`** | `Cli` class wrapping `git` and `gh` subprocess calls. Resolves bundled vs system `gh`, enforces minimum git version, handles auth refresh, and prints commands when `--verbose` is set. |
 | **`pr_tool/constants.py`** | Shared settings: `TARGET_REPOS` registry, git/GitHub defaults, UI icons, column padding for choice prompts. |
 | **`pr_tool/target_repo.py`** | `TargetRepo` dataclass (repo name, PR title template, layout key, ignored push dirs) and registry validation against known layouts. |
-| **`pr_tool/project_layouts.py`** | Project folder validators registered in `LAYOUTS` (accelerators vs model-zoo). |
+| **`pr_tool/project_layouts.py`** | Project folder validators registered in `LAYOUTS` (accelerators, model-zoo, and the shared `metadata_only_layout`). |
 | **`pr_tool/submission_exclusions.py`** | Git/Python paths excluded from layout checks and PR push (`pyvenv.cfg` / `conda-meta/` detection). |
 | **`pr_tool/input.py`** | Argparse setup, `--repo` / `--path` / metadata CLI flags, and `Input.collect_metadata()` delegating to the metadata engine. |
 | **`pr_tool/validation.py`** | Validates project layout and loaded `metadata.json` (missing fields, values outside AI Hub suggested lists with optional continue, derived-field repair). |
@@ -51,7 +52,7 @@ GitHub auth, fork sync, branching, push, and opens the PR in your browser.
 | **`pr_tool/LICENSE`** | License text for the tool distribution. |
 | **`pr_tool/metadata/__init__.py`** | Public metadata API: `collect_metadata`, `finalize_metadata`, `format_metadata_json`, `get_metadata_schema`. |
 | **`pr_tool/metadata/schema.py`** | `FieldSpec` and `MetadataSchema` types, field kinds, CLI flag registration per field. |
-| **`pr_tool/metadata/schemas.py`** | Per-repo metadata schemas (`SCHEMAS`). Defines field order and composition for accelerators vs model-zoo (`_SHARED_FIELDS`, algorithm, links, videos, metrics). |
+| **`pr_tool/metadata/schemas.py`** | Per-repo metadata schemas (`SCHEMAS`). Defines field order and composition for accelerators, model-zoo-psoc, and model-zoo-aurix. |
 | **`pr_tool/metadata/choices.py`** | Suggested values (sensors, domain, kit, …), brand definitions, kit→device and type→workflow mappings, and link builders for each repo. |
 | **`pr_tool/metadata/engine.py`** | Walks the schema to collect metadata interactively: derived device/workflow/algorithm, brand handling, links, optional videos, schema-ordered output. |
 | **`pr_tool/metadata/improj.py`** | Reads `{Project}.improj` `<ProjectType>` and maps it to `algorithm` (and vision defaults for object detection / image classification). |
@@ -104,6 +105,9 @@ folder name.
 1. **`constants.py`** — add a `TargetRepo` to `TARGET_REPOS` (`key`, `repo_name`, `label`, `pr_title_template`, `project_layout`, `git_ignored_dirs`).
 2. **`metadata/schemas.py`** — add a `MetadataSchema` with the same `repo_key`; register in `SCHEMAS`.
 3. **`project_layouts.py`** — add or reuse a layout in `LAYOUTS`.
+4. To make the target **metadata-only** (write `metadata.json` and stop, for any repo — not only AURIX&trade;), set `metadata_only=True`. Reuse `metadata_only_layout` unless the new repo needs a different project-name rule. The fields written still come only from that target's schema in `metadata/schemas.py`.
+
+`metadata_only` is independent of the schema. `model-zoo-aurix` is the current metadata-only target; adding another one does not require a change in `pr_tool.py`.
 
 Keys in `TARGET_REPOS` and `SCHEMAS` must match 1:1 or the tool exits on startup.
 
@@ -120,13 +124,13 @@ Edit `metadata/schemas.py`. Fields are `FieldSpec(key, label, kind, …)`; **tup
 | `url` | Single URL |
 | `image` / `image_mirror` | Thumbnail; mirror sets `main_image_id` |
 | `brand` | Sets `brand_image_id` + `brand_url` |
-| `accelerator_links`, `model_zoo_psoc_links` | Auto link arrays |
+| `accelerator_links`, `model_zoo_psoc_links`, `model_zoo_aurix_links` | Auto link arrays |
 | `videos` | Optional list of `{title, description, link}` (single video URL; no playlists or regular pages) |
 | `metrics` | Optional labelled metrics (model-zoo) |
 
 ### Update choice lists
 
-Edit tuples in `metadata/choices.py`, or run `python scripts/parse_master_json.py` to list current AI Hub values and copy what you need. Update `KIT_TO_DEVICE` when adding kits; add `Brand` entries for new partners.
+Edit tuples in `metadata/choices.py`, or run `python scripts/parse_master_json.py` to list current AI Hub values and copy what you need. Update `KIT_TO_DEVICE` when adding kits; add `Brand` entries for new partners. AURIX&trade; kit and device prompts use `AURIX_KIT` and `AURIX_DEVICE`, taken from published `deepcraft-model-zoo-for-aurix` metadata rather than `master.json`.
 
 ### Add a project layout
 
@@ -152,6 +156,7 @@ Edit `EXCLUDED_NAMES` and `EXCLUDED_FILE_GLOBS` in `submission_exclusions.py`.
 2. **Prepare a test project** on disk that matches the target layout:
    * **accelerators** — `README.md`, `metadata.json`, `<Name>.improj`, `Data/`; CamelCase name.
    * **model-zoo-psoc** — `README.md`, `metadata.json`; branch-safe folder name.
+   * **metadata-only targets** (currently `model-zoo-aurix`) — any folder; the tool writes `metadata.json` and stops. No git push or pull request. A new metadata-only repo uses the same flag; only its schema is new.
 
    A test folder may also be a local git repo or contain a venv; those paths are
    excluded from push and (for accelerators) from root layout validation.

@@ -559,7 +559,10 @@ try:
     print(f'  Repository    : {target_repo.base_repo}')
     print(f'  Project path  : {project_path}')
     print(f'  Project name  : {project_name}')
-    print(f'  Branch        : {branch_name}')
+    if target_repo.metadata_only:
+        print('  Output        : metadata.json only (no pull request)')
+    else:
+        print(f'  Branch        : {branch_name}')
     has_existing_metadata = metadata_path.exists()
     meta_status = (
         f'{ICON_SUCCESS} found' if has_existing_metadata
@@ -567,10 +570,16 @@ try:
     )
     print(f'  Project layout: {target_repo.project_layout}')
     print(f'  metadata.json : {meta_status}')
-    readme_status = (
-        f'{ICON_SUCCESS} found' if (project_path / 'README.md').is_file()
-        else f'{ICON_WARNING} missing (required)'
-    )
+    if target_repo.metadata_only:
+        readme_status = (
+            f'{ICON_SUCCESS} found' if (project_path / 'README.md').is_file()
+            else f'{ICON_INFO} optional for this target'
+        )
+    else:
+        readme_status = (
+            f'{ICON_SUCCESS} found' if (project_path / 'README.md').is_file()
+            else f'{ICON_WARNING} missing (required)'
+        )
     print(f'  README.md     : {readme_status}')
     print()
     if not confirm('Proceed with this project and repository?'):
@@ -621,6 +630,16 @@ try:
             use_cli_args=False, previous=metadata, review_pass=True,
         )
         metadata = args.metadata
+
+    # metadata_only is a target flag. Any future repo with it set stops here;
+    # field contents still come from that repo's schema.
+    if target_repo.metadata_only:
+        print()
+        print(
+            f'{ICON_SUCCESS} Wrote {metadata_path}. '
+            f'Nothing is pushed to {target_repo.base_repo}.',
+        )
+        sys.exit(0)
 
     # Create CLI early so layout checks and GitHub setup can show spinners/progress.
     print()

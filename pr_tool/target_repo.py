@@ -13,6 +13,10 @@ class TargetRepo:
     pr_title_template: str
     project_layout: str
     git_ignored_dirs: tuple[str, ...]
+    # When True, the tool writes metadata.json and exits. No fork, push, or pull
+    # request. Any future target can set this; the metadata fields still come
+    # from that target's schema.
+    metadata_only: bool = False
 
     @property
     def base_repo(self) -> str:
