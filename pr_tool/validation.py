@@ -73,8 +73,10 @@ def validate_metadata(
             _validate_derived_workflow(metadata, spec, result)
         elif spec.kind == 'derived_algorithm':
             _validate_derived_algorithm(metadata, spec, result, project_name, project_path)
-        elif spec.kind in ('accelerator_links', 'model_zoo_psoc_links'):
+        elif spec.kind in ('accelerator_links', 'model_zoo_psoc_links', 'model_zoo_aurix_links'):
             _validate_links(metadata, spec, result, project_name)
+        elif spec.kind == 'videos':
+            _validate_videos(metadata, spec, result)
         elif spec.kind == 'metrics':
             _validate_metrics(metadata, spec, result)
     return result
@@ -182,6 +184,13 @@ def _validate_text(metadata: dict, spec: FieldSpec, result: MetadataValidationRe
     if not isinstance(value, str) or not value.strip():
         _mark_missing(result, spec, f'Missing or empty required field: {spec.key}')
         return
+    if spec.kind == 'long_text':
+        from metadata.long_description import validate_long_description
+
+        error = validate_long_description(value)
+        if error:
+            _mark_other(result, spec, f'{spec.key}: {error}')
+            return
     if spec.max_length is not None and len(value) > spec.max_length:
         _mark_other(
             result,
@@ -361,7 +370,10 @@ def _validate_links(
         if not isinstance(link, dict):
             _mark_missing(result, spec, f'links[{index}] must be an object')
             return
-        for key in ('label', 'url', 'heading', 'sub-heading'):
+        required_keys = ('label', 'url')
+        if spec.kind != 'model_zoo_aurix_links' or link.get('label') != 'GitHub':
+            required_keys = ('label', 'url', 'heading', 'sub-heading')
+        for key in required_keys:
             if not isinstance(link.get(key), str) or not link[key].strip():
                 _mark_missing(result, spec, f'links[{index}] missing or empty {key!r}')
                 return
@@ -380,6 +392,31 @@ def _repair_github_link_url(link: dict, project_name: str | None) -> None:
     corrected = f'{base}{marker}{project_name}'
     if corrected != url:
         link['url'] = corrected
+
+
+def _validate_videos(metadata: dict, spec: FieldSpec, result: MetadataValidationResult) -> None:
+    from metadata.video_link import video_link_error
+
+    videos = metadata.get('videos')
+    if videos is None:
+        if spec.required:
+            _mark_missing(result, spec, 'Missing required field: videos')
+        return
+    if not isinstance(videos, list) or not videos:
+        _mark_other(result, spec, 'videos must be a non-empty list when present')
+        return
+    for index, entry in enumerate(videos, start=1):
+        if not isinstance(entry, dict):
+            _mark_other(result, spec, f'videos[{index}] must be an object')
+            return
+        for key in ('title', 'description', 'link'):
+            value = entry.get(key)
+            if not isinstance(value, str) or not value.strip():
+                _mark_missing(result, spec, f'videos[{index}] missing or empty {key!r}')
+                return
+        error = video_link_error(entry['link'])
+        if error:
+            _mark_other(result, spec, f'videos[{index}] link: {error}')
 
 
 def _validate_metrics(metadata: dict, spec: FieldSpec, result: MetadataValidationResult) -> None:

@@ -148,9 +148,29 @@ class ModelZooPsocLayout(ProjectLayout):
         pass
 
 
+class MetadataOnlyLayout(ProjectLayout):
+    """Safe project-name check only.
+
+    Reuse this for any target with ``metadata_only=True`` unless that target
+    needs a different name rule. Folder contents are not checked.
+    """
+
+    name = 'metadata_only_layout'
+
+    def validate_project_name(self, project_name: str) -> None:
+        validate_folder_branch_safe_project_name(project_name)
+
+    def validate(self, project_name: str, project_path: Path) -> None:
+        self.validate_project_name(project_name)
+
+    def _validate_layout(self, project_name: str, project_path: Path) -> None:
+        pass
+
+
 LAYOUTS: dict[str, ProjectLayout] = {
     AcceleratorLayout.name: AcceleratorLayout(),
     ModelZooPsocLayout.name: ModelZooPsocLayout(),
+    MetadataOnlyLayout.name: MetadataOnlyLayout(),
 }
 
 
