@@ -451,6 +451,7 @@ def _collect_field(
                 list(field.choices),
                 default=default,
                 allow_custom=field.allow_custom,
+                prefer_listed=field.key in ('sensors', 'domain'),
             )
         if field.key == 'type':
             default = normalize_project_types(prev_value) or None
@@ -466,6 +467,7 @@ def _collect_field(
                 list(field.choices),
                 default=default,
                 allow_custom=field.allow_custom,
+                prefer_listed=field.key in ('sensors', 'domain'),
             )
         if field.join_values:
             return [', '.join(chosen)]

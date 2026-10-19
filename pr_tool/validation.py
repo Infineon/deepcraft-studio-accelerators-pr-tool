@@ -128,6 +128,11 @@ def validate_loaded_metadata(
                 f'choose redo (n) to browse the lists and pick from them. Choose yes (y) '
                 f'only if you intend to keep these as new values.',
             )
+            if result.choice_fields & {'sensors', 'domain'}:
+                print(
+                    f'\n{constants.ICON_INFO} Sensors and domain should be selected from '
+                    f'the lists. Keep a new value only if none of the listed options fits.',
+                )
             print()
             answer = confirm_metadata()
             if answer == 'abort':

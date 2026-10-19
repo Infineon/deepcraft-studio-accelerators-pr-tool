@@ -173,7 +173,8 @@ your selected `--repo`.
 | Topic | Behaviour |
 | --- | --- |
 | **Long description** | Multiline **plain text** is stored as-is. **Markdown** is converted to HTML after validation (headings, lists, `**bold**`, `*italic*`, http(s) `[links](url)`). **Text HTML** is validated (allowed tags only, tags must match, no images/scripts). End input with a line containing only `END`. |
-| **Choices** (sensors, domain, kit, …) | Pick by number from the AI Hub list, or type a custom value (one confirmation). Custom text is title-cased (`smart home` → `Smart Home`). **Application**, **project type**, and **algorithm** must be chosen from the list. |
+| **Sensors, domain** | Select from the lists the tool shows. A new value is accepted only if none of the listed options fits, and only after you confirm it. |
+| **Other choices** (use case, kit, …) | Pick by number from the AI Hub list, or type a custom value (one confirmation). Custom text is title-cased (`smart home` → `Smart Home`). **Application**, **project type**, and **algorithm** must be chosen from the list. |
 | **Kit → device** | Device is derived from kit(s); custom kit names prompt for device. |
 | **Type → workflow** | Pick one or both types (`1,2`); workflow is set automatically. |
 | **Brand** | Infineon, a listed partner, or **New Brand/Partner** (custom image + URL). |

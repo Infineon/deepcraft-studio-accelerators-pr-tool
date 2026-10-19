@@ -126,6 +126,7 @@ APPLICATION = (
     'Smart Home',
     'Smart Manufacturing',
     'Wearables',
+    'Other',
 )
 
 USE_CASE = (
