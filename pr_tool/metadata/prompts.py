@@ -7,7 +7,6 @@ from typing import Callable
 
 import constants
 from metadata.choices import match_choice
-from metadata.long_description import normalize_long_description, validate_long_description
 
 
 def format_custom_choice_value(value: str) -> str:
@@ -76,67 +75,6 @@ def input_str(name: str, max_len: int | None = None, default: str | None = None)
             continue
         if max_len is not None and len(value) > max_len:
             print(f'{constants.ICON_WARNING} Value is more than {max_len} characters, please try again.')
-            continue
-        return value
-
-
-_LONG_TEXT_END = 'END'
-
-
-def input_html_text(
-    name: str,
-    max_len: int | None = None,
-    default: str | None = None,
-) -> str:
-    """Collect multiline plain text (kept as-is), Markdown, or text HTML (no images)."""
-    top_sep = _separator('=')
-    bottom_sep = _separator('-')
-    default_line = f'>>> Press Enter on the first line to keep the previous value\n' if default else ''
-    limit_line = f' (max {max_len} characters)' if max_len is not None else ''
-    prompt = (
-        f'{top_sep}\n'
-        f'{name}{limit_line}\n'
-        f'{default_line}'
-        f'  Plain text is stored as-is.\n'
-        f'  Markdown is converted to HTML (headings, lists, **bold**, *italic*, [links](url)).\n'
-        f'  Optional text HTML (no images): <p>, <br>, <ul>/<ol>/<li>, <strong>, <em>, <a href="...">.\n'
-        f'  Finish with a line containing only {_LONG_TEXT_END}.\n'
-        f'{bottom_sep}'
-    )
-    print(prompt)
-    while True:
-        lines: list[str] = []
-        first = True
-        while True:
-            try:
-                line = input()
-            except EOFError:
-                line = _LONG_TEXT_END
-            if first and default and line.strip() == '':
-                error = validate_long_description(default)
-                if error:
-                    print(f'{constants.ICON_WARNING} Previous value is not valid: {error}.')
-                    first = False
-                    continue
-                return default
-            first = False
-            if line.strip() == _LONG_TEXT_END:
-                break
-            lines.append(line.rstrip())
-        raw = '\n'.join(lines)
-        error = validate_long_description(raw)
-        if error:
-            print(f'{constants.ICON_WARNING} {error[0].upper()}{error[1:]}. Please try again.')
-            continue
-        value = normalize_long_description(raw)
-        if not value:
-            print(f'{constants.ICON_WARNING} Value cannot be empty, please try again.')
-            continue
-        if max_len is not None and len(value) > max_len:
-            print(
-                f'{constants.ICON_WARNING} Value is more than {max_len} characters, '
-                f'please try again.',
-            )
             continue
         return value
 

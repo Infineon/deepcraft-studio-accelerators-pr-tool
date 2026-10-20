@@ -20,10 +20,13 @@ _HR_RE = re.compile(r'^(?:\*{3,}|-{3,}|_{3,})$')
 _FENCE_RE = re.compile(r'^```')
 _MD_LINK_RE = re.compile(r'(?<!!)\[([^\]]+)\]\(([^)]*)\)')
 
+# Heading tags and Markdown `#` headings stay implemented below.
+# Set this to True to accept them again.
+_HEADINGS_ENABLED = False
+_HEADING_HTML_TAGS = frozenset({'h1', 'h2', 'h3', 'h4', 'h5', 'h6'})
 _ALLOWED_HTML_TAGS = frozenset({
-    'a', 'blockquote', 'br', 'code', 'em', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
-    'hr', 'i', 'li', 'ol', 'p', 'pre', 'strong', 'ul', 'b',
-})
+    'a', 'blockquote', 'br', 'code', 'em', 'hr', 'i', 'li', 'ol', 'p', 'pre', 'strong', 'ul', 'b',
+}) | _HEADING_HTML_TAGS
 _VOID_HTML_TAGS = frozenset({'br', 'hr'})
 _ALLOWED_HTML_ATTRS = {
     'a': frozenset({'href'}),
@@ -40,6 +43,18 @@ _INLINE_RE = re.compile(
     r'|(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)'
     r'|(?<![A-Za-z0-9_])_(?!_)(.+?)(?<!_)_(?![A-Za-z0-9_])'
 )
+
+
+def _unsupported_tag_error(name: str) -> str:
+    """One message for every tag the long description does not accept."""
+    return f'<{name.lower()}> is not supported'
+
+
+def _accepted_html_tags() -> frozenset[str]:
+    """Tags accepted right now. Heading tags stay defined but are off until enabled."""
+    if _HEADINGS_ENABLED:
+        return _ALLOWED_HTML_TAGS
+    return _ALLOWED_HTML_TAGS - _HEADING_HTML_TAGS
 
 
 def looks_like_html(text: str) -> bool:
@@ -173,7 +188,7 @@ def _markdown_to_html(text: str) -> str:
         flush_quote()
 
         heading = _HEADING_RE.match(line)
-        if heading:
+        if heading and _HEADINGS_ENABLED:
             flush_all()
             level = min(len(heading.group(1)), 6)
             blocks.append(
@@ -211,16 +226,84 @@ def _markdown_to_html(text: str) -> str:
     return '\n'.join(blocks)
 
 
+_PRE_BLOCK_RE = re.compile(r'<pre><code>(.*?)</code></pre>', re.DOTALL)
+_HTML_TAG_SPLIT_RE = re.compile(r'(<[^>]*>)')
+_DOUBLE_QUOTED_ATTR_RE = re.compile(r'(\s[^\s=/>]+)="([^"]*)"')
+
+
+def _flatten_prose(text: str) -> str:
+    """Turn line breaks into spaces. Markdown has already been converted by this point."""
+    flat = text.replace('\r\n', '\n').replace('\r', '\n').replace('\n', ' ')
+    return re.sub(r' {2,}', ' ', flat)
+
+
+def _flatten_newlines(text: str) -> str:
+    """Store one line. Keep code-block breaks as ``&#10;`` so they survive without a raw newline."""
+    pieces: list[str] = []
+    last = 0
+    for match in _PRE_BLOCK_RE.finditer(text):
+        pieces.append(_flatten_prose(text[last:match.start()]))
+        inner = match.group(1).replace('\r\n', '\n').replace('\r', '\n').replace('\n', '&#10;')
+        pieces.append(f'<pre><code>{inner}</code></pre>')
+        last = match.end()
+    pieces.append(_flatten_prose(text[last:]))
+    return ''.join(pieces).strip()
+
+
+def _curly_quotes(text: str) -> str:
+    """Replace straight ``"`` with “ and ” so the metadata string contains no JSON delimiter."""
+    opening = True
+    chars: list[str] = []
+    for char in text:
+        if char == '"':
+            chars.append('\u201c' if opening else '\u201d')
+            opening = not opening
+        else:
+            chars.append(char)
+    return ''.join(chars)
+
+
+def _single_quote_tag(tag: str) -> str:
+    """Use single-quoted attributes. A straight ``"`` cannot remain inside the JSON string value."""
+    def repl(match: re.Match[str]) -> str:
+        value = match.group(2).replace('"', '&quot;')
+        return f"{match.group(1)}='{value}'"
+
+    return _DOUBLE_QUOTED_ATTR_RE.sub(repl, tag)
+
+
+def _store_long_description(text: str) -> str:
+    """One line, with straight double quotes removed, ready for ``json.dumps``."""
+    flat = _flatten_newlines(text)
+    parts = _HTML_TAG_SPLIT_RE.split(flat)
+    stored: list[str] = []
+    for part in parts:
+        if part.startswith('<') and part.endswith('>'):
+            stored.append(_single_quote_tag(part))
+        else:
+            stored.append(_curly_quotes(part))
+    return ''.join(stored)
+
+
 def normalize_long_description(text: str) -> str:
-    """Keep plain text as-is; convert Markdown to HTML; leave HTML unchanged."""
+    """Keep plain text, convert Markdown to HTML, and leave HTML markup.
+
+    Newlines are required to read Markdown (a heading, list, or code fence is a
+    line). The stored value is then one line: breaks become spaces, and breaks
+    inside a code block become ``&#10;``. Straight ``"`` in the text becomes
+    curly quotes, and HTML attributes use single quotes, so the value can be
+    embedded in metadata.json.
+    """
     stripped = (text or '').replace('\r\n', '\n').replace('\r', '\n').strip()
     if not stripped:
         return ''
     if looks_like_html(stripped):
-        return stripped
-    if looks_like_markdown(stripped):
-        return _markdown_to_html(stripped)
-    return stripped
+        converted = stripped
+    elif looks_like_markdown(stripped):
+        converted = _markdown_to_html(stripped)
+    else:
+        converted = stripped
+    return _store_long_description(converted)
 
 
 def is_safe_href(value: str | None) -> bool:
@@ -246,8 +329,8 @@ class _TextHtmlParser(HTMLParser):
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         name = tag.lower()
-        if name not in _ALLOWED_HTML_TAGS:
-            self.errors.append(f'disallowed HTML tag <{name}>')
+        if name not in _accepted_html_tags():
+            self.errors.append(_unsupported_tag_error(name))
             return
         allowed_attrs = _ALLOWED_HTML_ATTRS.get(name, frozenset())
         for attr, value in attrs:
@@ -266,8 +349,8 @@ class _TextHtmlParser(HTMLParser):
         name = tag.lower()
         if name in _VOID_HTML_TAGS:
             return
-        if name not in _ALLOWED_HTML_TAGS:
-            self.errors.append(f'disallowed HTML tag </{name}>')
+        if name not in _accepted_html_tags():
+            self.errors.append(_unsupported_tag_error(name))
             return
         if not self._stack:
             self.errors.append(f'unexpected closing HTML tag </{name}>')
@@ -280,12 +363,12 @@ class _TextHtmlParser(HTMLParser):
 
     def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         name = tag.lower()
-        if name in _VOID_HTML_TAGS or name in _ALLOWED_HTML_TAGS:
+        if name in _VOID_HTML_TAGS or name in _accepted_html_tags():
             self.handle_starttag(tag, attrs)
             if name not in _VOID_HTML_TAGS and self._stack and self._stack[-1] == name:
                 self._stack.pop()
             return
-        self.errors.append(f'disallowed HTML tag <{name}>')
+        self.errors.append(_unsupported_tag_error(name))
 
     def handle_comment(self, _data: str) -> None:
         self.errors.append('HTML comments are not allowed')
@@ -317,8 +400,14 @@ def _html_validation_error(text: str) -> str | None:
 def _markdown_validation_error(text: str) -> str | None:
     fence_open = False
     for raw_line in text.split('\n'):
-        if _FENCE_RE.match(raw_line.strip()):
+        line = raw_line.strip()
+        if _FENCE_RE.match(line):
             fence_open = not fence_open
+            continue
+        if not fence_open and not _HEADINGS_ENABLED:
+            heading = _HEADING_RE.match(line)
+            if heading:
+                return _unsupported_tag_error(f'h{len(heading.group(1))}')
     if fence_open:
         return 'unclosed Markdown code fence (```)'
     for match in _MD_LINK_RE.finditer(text):
@@ -336,8 +425,8 @@ def validate_long_description(text: str) -> str | None:
     stripped = (text or '').replace('\r\n', '\n').replace('\r', '\n').strip()
     if not stripped:
         return None
-    if html_contains_images(stripped):
-        return 'images and media tags are not allowed (no <img>, <svg>, <video>, or Markdown images)'
+    if _MD_IMAGE_RE.search(stripped):
+        return _unsupported_tag_error('img')
     if looks_like_html(stripped):
         return _html_validation_error(stripped)
     if looks_like_markdown(stripped):

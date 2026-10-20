@@ -715,6 +715,12 @@ try:
 except ValueError as exc:
     print(f'{ICON_ERROR} Error: {exc}', file=sys.stderr)
     sys.exit(1)
+except KeyboardInterrupt:
+    print()
+    print_header('Process Aborted', icon=ICON_ABORT)
+    print(f'  {ICON_ABORT} Interrupted by user (Ctrl+C).')
+    print()
+    sys.exit(130)
 
 cli.progress('Checking git version...')
 cli.ensure_git_version()

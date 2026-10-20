@@ -32,17 +32,17 @@ from metadata.improj import (
     is_vision_algorithm,
 )
 from metadata.image_field import select_project_image
+from metadata.long_description_prompt import input_html_text
 from metadata.prompts import (
     confirm,
     input_choice,
     input_choices,
     input_grouped_choice,
-    input_html_text,
     input_metric_value,
     input_str,
 )
 from metadata.schema import FieldSpec, MetadataSchema
-from metadata.video_link import video_link_error
+from metadata.video_link import duplicate_video_link_error, video_link_error
 
 def _order_metadata(metadata: dict, schema: MetadataSchema) -> dict:
     """Return metadata with keys in schema field order."""
@@ -259,14 +259,15 @@ def _normalize_videos(value: Any) -> list[dict] | None:
     return videos or None
 
 
-def _collect_video_link(default: str | None = None) -> str:
+def _collect_video_link(default: str | None = None, taken: list[str] | None = None) -> str:
     print(
         '  Single video URL only (for example https://youtu.be/...). '
         'Playlists and regular web pages are not allowed.',
     )
+    already = list(taken or [])
     while True:
         link = input_str('Video link', default=default)
-        error = video_link_error(link)
+        error = video_link_error(link) or duplicate_video_link_error(link, already)
         if error is None:
             return link
         print(f'{constants.ICON_WARNING} {error}')
@@ -287,6 +288,9 @@ def _collect_videos(previous: dict) -> list[dict] | None:
             print(f'{constants.ICON_WARNING} Existing video links are not single-video URLs:')
             for error in link_errors:
                 print(f'  {error}')
+        elif _duplicate_links(existing):
+            print(f'{constants.ICON_WARNING} A video link already exists more than once.')
+            print('  Enter the videos again.')
         elif confirm('Keep existing videos?'):
             return existing
     if not confirm('Add videos? (optional — answer n to skip)'):
@@ -311,6 +315,7 @@ def _collect_videos(previous: dict) -> list[dict] | None:
         )
         link = _collect_video_link(
             defaults.get('link') if isinstance(defaults.get('link'), str) else None,
+            taken=[video['link'] for video in videos],
         )
         videos.append({
             'title': title,
@@ -321,6 +326,17 @@ def _collect_videos(previous: dict) -> list[dict] | None:
             break
         index += 1
     return videos or None
+
+
+def _duplicate_links(videos: list[dict]) -> list[str]:
+    seen: list[str] = []
+    duplicates: list[str] = []
+    for video in videos:
+        if duplicate_video_link_error(video['link'], seen):
+            duplicates.append(video['link'])
+        else:
+            seen.append(video['link'])
+    return duplicates
 
 
 def _collect_metrics(previous: dict) -> list[dict] | None:

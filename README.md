@@ -57,6 +57,7 @@ GitHub auth, fork sync, branching, push, and opens the PR in your browser.
 | **`pr_tool/metadata/engine.py`** | Walks the schema to collect metadata interactively: derived device/workflow/algorithm, brand handling, links, optional videos, schema-ordered output. |
 | **`pr_tool/metadata/improj.py`** | Reads `{Project}.improj` `<ProjectType>` and maps it to `algorithm` (and vision defaults for object detection / image classification). |
 | **`pr_tool/metadata/prompts.py`** | Interactive prompts (`input_str`, `input_choice`, `input_choices`, confirmations) including custom-value title-casing. |
+| **`pr_tool/metadata/long_description_prompt.py`** | Long-description prompt. The first time, choose the terminal or Notepad. Finish with `END`. Open Notepad again with `EDIT`. |
 | **`pr_tool/metadata/long_description.py`** | Keeps plain long-description text as-is; converts Markdown to HTML; validates Markdown and text HTML (allowed tags, matching tags, safe links; no images/scripts). |
 | **`pr_tool/metadata/video_link.py`** | Accepts a single video URL (YouTube, Vimeo, Dailymotion, Wistia, Loom, or a direct video file). Rejects playlists, collections, channels, and regular web pages. |
 | **`pr_tool/metadata/format.py`** | Pretty-prints `metadata.json` with keys in schema order. |
@@ -95,7 +96,7 @@ folder name.
 | Folder / name rules | `project_layouts.py` |
 | Git/Python paths excluded from push | `submission_exclusions.py` |
 | New field *kind* (rare) | `metadata/schema.py`, `engine.py`, `validation.py` |
-| Long description text → HTML | `metadata/long_description.py` (Markdown only; plain text is unchanged) |
+| Long description text → HTML | `metadata/long_description.py` (Markdown becomes HTML; the stored value is one line, with straight quotes rewritten) |
 | Video link checks | `metadata/video_link.py` |
 | Algorithm from `.improj` | `metadata/improj.py`, `engine.py` |
 | Git / PR flow | `pr_tool.py`, `cli.py` |
@@ -124,8 +125,8 @@ Edit `metadata/schemas.py`. Fields are `FieldSpec(key, label, kind, …)`; **tup
 | `url` | Single URL |
 | `image` / `image_mirror` | Thumbnail; mirror sets `main_image_id` |
 | `brand` | Sets `brand_image_id` + `brand_url` |
+| `videos` | Optional list of `{title, description, link}` (single video URL; no playlists or regular pages). Stored after `brand_url` and before `links`. |
 | `accelerator_links`, `model_zoo_psoc_links`, `model_zoo_aurix_links` | Auto link arrays |
-| `videos` | Optional list of `{title, description, link}` (single video URL; no playlists or regular pages) |
 | `metrics` | Optional labelled metrics (model-zoo) |
 
 ### Update choice lists

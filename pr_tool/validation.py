@@ -190,12 +190,14 @@ def _validate_text(metadata: dict, spec: FieldSpec, result: MetadataValidationRe
         _mark_missing(result, spec, f'Missing or empty required field: {spec.key}')
         return
     if spec.kind == 'long_text':
-        from metadata.long_description import validate_long_description
+        from metadata.long_description import normalize_long_description, validate_long_description
 
         error = validate_long_description(value)
         if error:
             _mark_other(result, spec, f'{spec.key}: {error}')
             return
+        value = normalize_long_description(value)
+        metadata[spec.key] = value
     if spec.max_length is not None and len(value) > spec.max_length:
         _mark_other(
             result,
@@ -400,7 +402,7 @@ def _repair_github_link_url(link: dict, project_name: str | None) -> None:
 
 
 def _validate_videos(metadata: dict, spec: FieldSpec, result: MetadataValidationResult) -> None:
-    from metadata.video_link import video_link_error
+    from metadata.video_link import duplicate_video_link_error, video_link_error
 
     videos = metadata.get('videos')
     if videos is None:
@@ -422,6 +424,15 @@ def _validate_videos(metadata: dict, spec: FieldSpec, result: MetadataValidation
         error = video_link_error(entry['link'])
         if error:
             _mark_other(result, spec, f'videos[{index}] link: {error}')
+            continue
+        taken = [
+            earlier['link']
+            for earlier in videos[:index - 1]
+            if isinstance(earlier, dict) and isinstance(earlier.get('link'), str)
+        ]
+        duplicate = duplicate_video_link_error(entry['link'], taken)
+        if duplicate:
+            _mark_other(result, spec, f'videos[{index}] link: {duplicate}')
 
 
 def _validate_metrics(metadata: dict, spec: FieldSpec, result: MetadataValidationResult) -> None:

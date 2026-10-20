@@ -23,6 +23,7 @@ _YOUTUBE_NOT_VIDEO = (
     'not a channel or another page.'
 )
 _COLLECTION = 'Playlists and collections are not allowed. Use a link to a single video.'
+_DUPLICATE = 'This video link already exists in the videos field. Please try again.'
 
 
 def video_link_error(value: str) -> str | None:
@@ -40,6 +41,29 @@ def video_link_error(value: str) -> str | None:
     return _NOT_VIDEO
 
 
+def duplicate_video_link_error(link: str, taken: list[str]) -> str | None:
+    """Return an error when *link* is already one of *taken*."""
+    key = video_link_key(link)
+    if any(video_link_key(other) == key for other in taken):
+        return _DUPLICATE
+    return None
+
+
+def video_link_key(value: str) -> str:
+    """Identity of a video link, so equivalent URLs count as the same video."""
+    parsed = urlparse((value or '').strip())
+    host = (parsed.hostname or '').lower()
+    if _is_youtube_host(host):
+        video_id = _youtube_video_id(parsed, host)
+        if video_id:
+            return f'youtube:{video_id}'
+    if parsed.scheme and host:
+        path = parsed.path.rstrip('/')
+        query = f'?{parsed.query}' if parsed.query else ''
+        return f'{parsed.scheme.lower()}://{host}{path}{query}'
+    return (value or '').strip().casefold().rstrip('/')
+
+
 def _host_is(host: str, name: str) -> bool:
     return host == name or host.endswith('.' + name)
 
@@ -52,7 +76,7 @@ def _path_parts(parsed) -> list[str]:
     return [part for part in parsed.path.split('/') if part]
 
 
-def _youtube_video_error(parsed, host: str) -> str | None:
+def _youtube_video_id(parsed, host: str) -> str:
     parts = _path_parts(parsed)
     query = parse_qs(parsed.query, keep_blank_values=True)
     if (
@@ -60,8 +84,7 @@ def _youtube_video_error(parsed, host: str) -> str | None:
         or (parts and parts[0] == 'playlist')
         or (len(parts) >= 2 and parts[0] == 'embed' and parts[1] == 'videoseries')
     ):
-        return _YOUTUBE_PLAYLIST
-
+        return ''
     video_id = ''
     if _host_is(host, 'youtu.be'):
         if len(parts) == 1:
@@ -71,10 +94,27 @@ def _youtube_video_error(parsed, host: str) -> str | None:
         video_id = video_ids[0] if video_ids else ''
     elif len(parts) >= 2 and parts[0] in _YOUTUBE_VIDEO_PREFIXES:
         video_id = parts[1]
-
     if _YOUTUBE_ID_RE.match(video_id):
+        return video_id
+    return ''
+
+
+def _youtube_video_error(parsed, host: str) -> str | None:
+    if _path_has_youtube_playlist(parsed):
+        return _YOUTUBE_PLAYLIST
+    if _youtube_video_id(parsed, host):
         return None
     return _YOUTUBE_NOT_VIDEO
+
+
+def _path_has_youtube_playlist(parsed) -> bool:
+    parts = _path_parts(parsed)
+    query = parse_qs(parsed.query, keep_blank_values=True)
+    return (
+        'list' in query
+        or (bool(parts) and parts[0] == 'playlist')
+        or (len(parts) >= 2 and parts[0] == 'embed' and parts[1] == 'videoseries')
+    )
 
 
 def _is_collection(parsed, host: str) -> bool:
