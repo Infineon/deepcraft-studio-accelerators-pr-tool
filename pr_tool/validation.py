@@ -403,6 +403,7 @@ def _repair_github_link_url(link: dict, project_name: str | None) -> None:
 
 def _validate_videos(metadata: dict, spec: FieldSpec, result: MetadataValidationResult) -> None:
     from metadata.video_link import duplicate_video_link_error, video_link_error
+    from metadata.video_prompt import normalize_video_text
 
     videos = metadata.get('videos')
     if videos is None:
@@ -421,6 +422,11 @@ def _validate_videos(metadata: dict, spec: FieldSpec, result: MetadataValidation
             if not isinstance(value, str) or not value.strip():
                 _mark_missing(result, spec, f'videos[{index}] missing or empty {key!r}')
                 return
+        entry['title'] = normalize_video_text(entry['title'])
+        entry['description'] = normalize_video_text(entry['description'])
+        if not entry['title'] or not entry['description']:
+            _mark_missing(result, spec, f'videos[{index}] title and description cannot be empty')
+            return
         error = video_link_error(entry['link'])
         if error:
             _mark_other(result, spec, f'videos[{index}] link: {error}')

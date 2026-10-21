@@ -116,6 +116,7 @@ The file matches metadata already published in the [Model Zoo for AURIX&trade;](
 * `algorithm` is chosen from the list (it is not read from an `.improj` file).
 * `kit` / `device` use the AURIX&trade; and TRAVEO&trade; boards from the model zoo. Device is derived from the selected kit.
 * `type` is stored as one entry, `Model Development, Model Deployment` (both are selected by default; press Enter to keep them). `workflow` is the matching pair of ML workflow values.
+* `brand` defaults to DEEPCRAFT&trade; (press Enter to keep it). A brand already saved in `metadata.json` is offered instead.
 * `videos` are optional and are stored after `brand_url`. Skip them, or add one or more single-video links.
 * `links` are filled automatically: a Model Zoo link (with heading) and a GitHub link to `.../tree/main/<project name>` (label and URL only).
 
@@ -172,18 +173,18 @@ your selected `--repo`.
 
 | Topic | Behaviour |
 | --- | --- |
-| **Long description** | The first time, choose `1` to type in the terminal or `2` to start in Notepad. Either way, go to a new line and type `END` when the text is finished, or `EDIT` to open the whole text in Notepad again. The terminal can change only the line you are typing. A later run can press Enter on the first line to keep the saved value. Headings and images are not accepted. **Plain text** is stored as one line (line breaks become spaces). **Markdown** needs those line breaks to recognize lists and code; it is then converted to one line of HTML. **Text HTML** must use the tags in [Long description tags](#long-description-tags). Straight `"` in the text is stored as curly quotes, and HTML attributes use single quotes, so the value stays valid inside `metadata.json`. |
+| **Long description** | Choose `1` to type in the terminal or `2` to open Notepad. The same choice is shown when a value is already saved: Enter keeps it, `1` puts the saved text on the terminal input line so you can change it with the arrow keys and Backspace, and `2` opens that saved text in Notepad. After you press Enter on the edited text, type `END` to finish. Either way, go to a new line and type `END` when the text is finished, or `EDIT` to open the whole text in Notepad again. The terminal can change only the line you are typing. Headings and images are not accepted. **Plain text** is stored as one line (line breaks become spaces). **Markdown** needs those line breaks to recognize lists and code; it is then converted to one line of HTML. **Text HTML** must use the tags in [Long description tags](#long-description-tags). Straight `"` in the text is stored as curly quotes, and HTML attributes use single quotes, so the value stays valid inside `metadata.json`. |
 | **Sensors, domain** | Select from the lists the tool shows. A new value is accepted only if none of the listed options fits, and only after you confirm it. |
 | **Other choices** (use case, kit, …) | Pick by number from the AI Hub list, or type a custom value (one confirmation). Custom text is title-cased (`smart home` → `Smart Home`). **Application**, **project type**, and **algorithm** must be chosen from the list. |
 | **Kit → device** | Device is derived from kit(s); custom kit names prompt for device. |
 | **Type → workflow** | Pick one or both types (`1,2`); workflow is set automatically. |
-| **Brand** | Infineon, a listed partner, or **New Brand/Partner** (custom image + URL). |
+| **Brand** | Infineon, a listed partner, or **New Brand/Partner** (custom image + URL). Model Zoo for AURIX&trade; defaults to DEEPCRAFT&trade;. |
 | **Links** | Filled automatically (accelerators: Studio + GitHub; model-zoo PSOC&trade;: GitHub; model-zoo AURIX&trade;: Model Zoo + GitHub). |
-| **Videos** | Optional. Each entry needs `title`, `description`, and a **single-video** `link` (YouTube, Vimeo, Dailymotion, Wistia, Loom, or a direct video file). YouTube playlists, other collections, and regular web pages are rejected. A link that is already in the list, including the same YouTube video under another URL, must be entered again. Skip if the project has no videos. |
+| **Videos** | Optional. Each entry needs `title`, `description`, and a **single-video** `link` (YouTube, Vimeo, Dailymotion, Wistia, Loom, or a direct video file). Title and description are stored as one line; a straight `"` becomes a curly quote so the value stays valid inside `metadata.json`. YouTube playlists, other collections, and regular web pages are rejected. A link that is already in the list, including the same YouTube video under another URL, must be entered again. Skip if the project has no videos. After the first video, or when `metadata.json` already has videos, a menu lists them: Enter keeps the list, a number edits that video, `d<N>` deletes video N, `a` adds a video, and `n` erases all videos. Videos with a bad or repeated link are marked and must be edited or deleted before you continue. |
 | **Image** | Auto-pick from `images.json` by tags, or choose interactively. `--image` / `--tag` skip the prompt. |
 | **Accelerators only** | First pass: `algorithm` from `{Project}.improj` `<ProjectType>`; for `ObjectDetection` / `ImageClassification` also auto-sets `sensors=Camera`, `domain=Vision`, and Edge kit/device. After the metadata overview, choose **n** to re-edit every field (including those defaults). |
 | **Model zoo PSOC&trade; only** | `metrics` optional (fixed labels, you enter values). `videos` optional. |
-| **Model zoo AURIX&trade; only** | Metadata file only (no pull request). `algorithm` is prompted. Kits and devices are the AURIX&trade;/TRAVEO&trade; boards. `type` is one combined value. `videos` optional. No `metrics`. |
+| **Model zoo AURIX&trade; only** | Metadata file only (no pull request). `algorithm` is prompted. Kits and devices are the AURIX&trade;/TRAVEO&trade; boards. `type` is one combined value. `brand` defaults to DEEPCRAFT&trade;. `videos` optional. No `metrics`. |
 
 All fields are required except **videos** (all three targets) and **metrics** on `model-zoo-psoc`. `model-zoo-aurix` does not include metrics. HTML in the long description is optional. Whatever form you enter is stored as a single line.
 

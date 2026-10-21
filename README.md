@@ -54,12 +54,13 @@ GitHub auth, fork sync, branching, push, and opens the PR in your browser.
 | **`pr_tool/metadata/schema.py`** | `FieldSpec` and `MetadataSchema` types, field kinds, CLI flag registration per field. |
 | **`pr_tool/metadata/schemas.py`** | Per-repo metadata schemas (`SCHEMAS`). Defines field order and composition for accelerators, model-zoo-psoc, and model-zoo-aurix. |
 | **`pr_tool/metadata/choices.py`** | Suggested values (sensors, domain, kit, …), brand definitions, kit→device and type→workflow mappings, and link builders for each repo. |
-| **`pr_tool/metadata/engine.py`** | Walks the schema to collect metadata interactively: derived device/workflow/algorithm, brand handling, links, optional videos, schema-ordered output. |
+| **`pr_tool/metadata/engine.py`** | Walks the schema to collect metadata interactively: derived device/workflow/algorithm, brand handling, links, and schema-ordered output. |
 | **`pr_tool/metadata/improj.py`** | Reads `{Project}.improj` `<ProjectType>` and maps it to `algorithm` (and vision defaults for object detection / image classification). |
 | **`pr_tool/metadata/prompts.py`** | Interactive prompts (`input_str`, `input_choice`, `input_choices`, confirmations) including custom-value title-casing. |
 | **`pr_tool/metadata/long_description_prompt.py`** | Long-description prompt. The first time, choose the terminal or Notepad. Finish with `END`. Open Notepad again with `EDIT`. |
 | **`pr_tool/metadata/long_description.py`** | Keeps plain long-description text as-is; converts Markdown to HTML; validates Markdown and text HTML (allowed tags, matching tags, safe links; no images/scripts). |
-| **`pr_tool/metadata/video_link.py`** | Accepts a single video URL (YouTube, Vimeo, Dailymotion, Wistia, Loom, or a direct video file). Rejects playlists, collections, channels, and regular web pages. |
+| **`pr_tool/metadata/video_link.py`** | Accepts a single video URL (YouTube, Vimeo, Dailymotion, Wistia, Loom, or a direct video file). Rejects playlists, collections, channels, regular web pages, and a link that is already in the list. |
+| **`pr_tool/metadata/video_prompt.py`** | Optional videos prompt: title, description, and link. Asks again when the link is already in the list. |
 | **`pr_tool/metadata/format.py`** | Pretty-prints `metadata.json` with keys in schema order. |
 | **`pr_tool/metadata/image_field.py`** | Interactive and CLI-driven project image selection (`--image`, `--tag`, or pick from catalog). |
 

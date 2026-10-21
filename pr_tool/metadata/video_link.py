@@ -77,14 +77,10 @@ def _path_parts(parsed) -> list[str]:
 
 
 def _youtube_video_id(parsed, host: str) -> str:
+    if _path_has_youtube_playlist(parsed):
+        return ''
     parts = _path_parts(parsed)
     query = parse_qs(parsed.query, keep_blank_values=True)
-    if (
-        'list' in query
-        or (parts and parts[0] == 'playlist')
-        or (len(parts) >= 2 and parts[0] == 'embed' and parts[1] == 'videoseries')
-    ):
-        return ''
     video_id = ''
     if _host_is(host, 'youtu.be'):
         if len(parts) == 1:

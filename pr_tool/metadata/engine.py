@@ -6,7 +6,6 @@ from argparse import Namespace
 from pathlib import Path
 from typing import Any
 
-import constants
 from metadata.choices import (
     Brand,
     INFINEON_BRAND,
@@ -42,7 +41,7 @@ from metadata.prompts import (
     input_str,
 )
 from metadata.schema import FieldSpec, MetadataSchema
-from metadata.video_link import duplicate_video_link_error, video_link_error
+from metadata.video_prompt import collect_videos
 
 def _order_metadata(metadata: dict, schema: MetadataSchema) -> dict:
     """Return metadata with keys in schema field order."""
@@ -202,7 +201,7 @@ def _collect_custom_brand(previous: dict) -> Brand:
     )
 
 
-def _collect_brand(previous: dict) -> Brand:
+def _collect_brand(previous: dict, *, fallback: str | None = None) -> Brand:
     prev_image = previous.get('brand_image_id')
     default = None
     if prev_image:
@@ -210,6 +209,8 @@ def _collect_brand(previous: dict) -> Brand:
             default = brand_for_image(prev_image).label
         else:
             default = NEW_BRAND_PARTNER_LABEL
+    elif fallback:
+        default = fallback
     groups = [
         ('Infineon brand:', [INFINEON_BRAND.label]),
         ('Partner brand:', [brand.label for brand in PARTNER_BRANDS]),
@@ -237,106 +238,6 @@ def _metrics_by_label(metrics: list[dict] | None) -> dict[str, str]:
             if isinstance(label, str) and isinstance(value, str) and value:
                 by_label[label] = value
     return by_label
-
-
-def _normalize_videos(value: Any) -> list[dict] | None:
-    if not isinstance(value, list) or not value:
-        return None
-    videos: list[dict] = []
-    for entry in value:
-        if not isinstance(entry, dict):
-            continue
-        title = entry.get('title')
-        description = entry.get('description')
-        link = entry.get('link')
-        if not all(isinstance(item, str) and item.strip() for item in (title, description, link)):
-            continue
-        videos.append({
-            'title': title.strip(),
-            'description': description.strip(),
-            'link': link.strip(),
-        })
-    return videos or None
-
-
-def _collect_video_link(default: str | None = None, taken: list[str] | None = None) -> str:
-    print(
-        '  Single video URL only (for example https://youtu.be/...). '
-        'Playlists and regular web pages are not allowed.',
-    )
-    already = list(taken or [])
-    while True:
-        link = input_str('Video link', default=default)
-        error = video_link_error(link) or duplicate_video_link_error(link, already)
-        if error is None:
-            return link
-        print(f'{constants.ICON_WARNING} {error}')
-
-
-def _collect_videos(previous: dict) -> list[dict] | None:
-    existing = _normalize_videos(previous.get('videos'))
-    if existing is not None:
-        print('\nExisting videos:')
-        for index, video in enumerate(existing, start=1):
-            print(f'  {index}. {video["title"]} — {video["link"]}')
-        link_errors = [
-            f'{index}. {video["link"]}: {error}'
-            for index, video in enumerate(existing, start=1)
-            if (error := video_link_error(video['link']))
-        ]
-        if link_errors:
-            print(f'{constants.ICON_WARNING} Existing video links are not single-video URLs:')
-            for error in link_errors:
-                print(f'  {error}')
-        elif _duplicate_links(existing):
-            print(f'{constants.ICON_WARNING} A video link already exists more than once.')
-            print('  Enter the videos again.')
-        elif confirm('Keep existing videos?'):
-            return existing
-    if not confirm('Add videos? (optional — answer n to skip)'):
-        return None
-    videos: list[dict] = []
-    index = 1
-    previous_entries = existing or []
-    while True:
-        defaults = previous_entries[index - 1] if index <= len(previous_entries) else {}
-        print(f'\nVideo {index}')
-        title = input_str(
-            'Video title',
-            default=defaults.get('title') if isinstance(defaults.get('title'), str) else None,
-        )
-        description = input_str(
-            'Video description',
-            default=(
-                defaults.get('description')
-                if isinstance(defaults.get('description'), str)
-                else None
-            ),
-        )
-        link = _collect_video_link(
-            defaults.get('link') if isinstance(defaults.get('link'), str) else None,
-            taken=[video['link'] for video in videos],
-        )
-        videos.append({
-            'title': title,
-            'description': description,
-            'link': link,
-        })
-        if not confirm('Add another video?'):
-            break
-        index += 1
-    return videos or None
-
-
-def _duplicate_links(videos: list[dict]) -> list[str]:
-    seen: list[str] = []
-    duplicates: list[str] = []
-    for video in videos:
-        if duplicate_video_link_error(video['link'], seen):
-            duplicates.append(video['link'])
-        else:
-            seen.append(video['link'])
-    return duplicates
 
 
 def _collect_metrics(previous: dict) -> list[dict] | None:
@@ -384,6 +285,7 @@ def _collect_field(
     project_path: Path,
     review_pass: bool,
     vision_defaults: bool,
+    repo_key: str,
 ) -> Any:
     prev_value = previous.get(field.key)
     cli = _cli_value(args, field) if use_cli_args else None
@@ -420,7 +322,8 @@ def _collect_field(
         )
 
     if field.kind == 'brand':
-        return _collect_brand(previous)
+        fallback = INFINEON_BRAND.label if repo_key == 'model-zoo-aurix' else None
+        return _collect_brand(previous, fallback=fallback)
 
     if field.kind == 'text':
         return cli or input_str(
@@ -497,7 +400,7 @@ def _collect_field(
     if field.kind == 'model_zoo_aurix_links':
         return model_zoo_aurix_links(project_name)
     if field.kind == 'videos':
-        return _collect_videos(previous)
+        return collect_videos(previous)
     if field.kind == 'metrics':
         return _collect_metrics(previous)
     raise ValueError(f'Unknown field kind: {field.kind!r}')
@@ -557,6 +460,7 @@ def collect_metadata(
             vision_defaults=any(
                 spec.kind == 'derived_algorithm' for spec in schema.fields
             ),
+            repo_key=schema.repo_key,
         )
         if field.kind == 'brand':
             result['brand_image_id'] = value.brand_image_id

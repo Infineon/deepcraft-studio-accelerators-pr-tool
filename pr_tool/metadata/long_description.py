@@ -7,10 +7,6 @@ from html.parser import HTMLParser
 from urllib.parse import urlparse
 
 _HTML_TAG_RE = re.compile(r'</?[a-zA-Z][a-zA-Z0-9]*(?:\s[^>]*)?>')
-_HTML_IMAGE_TAG_RE = re.compile(
-    r'</?\s*(?:img|picture|source|svg|video|audio|iframe|object|embed)\b[^>]*>',
-    re.IGNORECASE,
-)
 _MD_IMAGE_RE = re.compile(r'!\[[^\]]*\]\([^)]+\)')
 _HEADING_RE = re.compile(r'^(#{1,6})\s+(.+?)\s*#*\s*$')
 _BULLET_RE = re.compile(r'^[-*+•]\s+(.+)$')
@@ -60,12 +56,6 @@ def _accepted_html_tags() -> frozenset[str]:
 def looks_like_html(text: str) -> bool:
     """True when *text* already contains HTML tags."""
     return bool(_HTML_TAG_RE.search(text or ''))
-
-
-def html_contains_images(text: str) -> bool:
-    """True when *text* includes image/media tags or Markdown images."""
-    value = text or ''
-    return bool(_HTML_IMAGE_TAG_RE.search(value) or _MD_IMAGE_RE.search(value))
 
 
 def looks_like_markdown(text: str) -> bool:
