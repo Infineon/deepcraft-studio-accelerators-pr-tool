@@ -1,6 +1,6 @@
 # ── Git & GitHub ─────────────────────────────────────────────
 HOST = 'https://github.com'
-BASE_REPO_OWNER = 'angelodm-imagimob' #'Infineon'
+BASE_REPO_OWNER = 'Infineon'
 MAIN_BRANCH = 'main'
 GIT_DIR = '.git_deepcraft'
 MINIMUM_UPDATABLE_GIT_VERSION = '2.16.2'  # update-git-for-windows option
