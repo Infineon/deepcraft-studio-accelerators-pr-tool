@@ -356,7 +356,52 @@ def open_url_in_browser(url: str) -> bool:
         return False
 
 
-def create_pull_request_via_api(head_branch: str, project_name: str, target_repo) -> str | None:
+# Infineon's organization template. The website inserts it only for repositories
+# in the Infineon org; ``gh pr create`` and the pulls API do not.
+_PR_TEMPLATE_MARKER = '--- DO NOT DELETE ANYTHING ABOVE THIS LINE ---'
+_INFINEON_PR_TEMPLATE = """\
+By creating this pull request you agree to the terms in CONTRIBUTING.md.
+https://github.com/Infineon/.github/blob/master/CONTRIBUTING.md
+--- DO NOT DELETE ANYTHING ABOVE THIS LINE ---
+
+CONTRIBUTING.md also tells you what to expect in the PR process.
+
+Description
+Provide the information we need to review your PR. What problem does the pull request solve? "Bug fix" is not a good description.
+
+Related Issue
+If you opened an issue before creating the PR, point to it here.
+
+Context
+What do we need to know about your development environment, tools, target, and so on. Screenshots are always helpful if there is a UI element to this PR.
+"""
+
+
+def pull_request_body() -> str:
+    """Return the Infineon pull request template, preferring the copy on GitHub."""
+    fetched = _usable_gh_string(
+        gh(
+            [
+                'api',
+                'repos/Infineon/.github/contents/pull_request_template.md',
+                '-H', 'Accept: application/vnd.github.raw',
+            ],
+            check=False,
+            stdout=PIPE,
+            quiet_stderr=True,
+        ),
+    )
+    if fetched and _PR_TEMPLATE_MARKER in fetched:
+        return fetched
+    return _INFINEON_PR_TEMPLATE
+
+
+def create_pull_request_via_api(
+    head_branch: str,
+    project_name: str,
+    target_repo,
+    body_file: Path,
+) -> str | None:
     """Create a PR with the REST API (more reliable than ``gh pr create`` for huge diffs)."""
     url = _usable_gh_string(
         gh(
@@ -366,6 +411,7 @@ def create_pull_request_via_api(head_branch: str, project_name: str, target_repo
                 '-f', f'title={target_repo.pr_title(project_name)}',
                 '-f', f'head={head_branch}',
                 '-f', f'base={MAIN_BRANCH}',
+                '-f', f'body=@{body_file}',
                 '--jq', '.html_url',
             ],
             check=False,
@@ -388,48 +434,60 @@ def create_pull_request_with_retries(
     Large multi-chunk pushes often make ``gh pr create`` fail while GitHub is still
     computing the diff; the REST create endpoint usually still works.
     """
-    for attempt in range(1, attempts + 1):
-        cli.progress(
-            f'Creating pull request (attempt {attempt}/{attempts})...',
-        )
-        create_rc = gh([
-            'pr', 'create',
-            '--base', MAIN_BRANCH,
-            '--head', head_branch,
-            '--title', target_repo.pr_title(project_name),
-        ], check=False, quiet_stderr=True)
-        if create_rc == 0:
-            return _usable_gh_string(
+    body_file = NamedTemporaryFile(
+        'w', encoding='utf-8', newline='\n', suffix='-pr-body.md', delete=False,
+    )
+    body_path = Path(body_file.name)
+    try:
+        body_file.write(pull_request_body())
+        body_file.close()
+        for attempt in range(1, attempts + 1):
+            cli.progress(
+                f'Creating pull request (attempt {attempt}/{attempts})...',
+            )
+            create_rc = gh([
+                'pr', 'create',
+                '--base', MAIN_BRANCH,
+                '--head', head_branch,
+                '--title', target_repo.pr_title(project_name),
+                '--body-file', str(body_path),
+            ], check=False, quiet_stderr=True)
+            if create_rc == 0:
+                return _usable_gh_string(
+                    gh(
+                        ['pr', 'view', head_branch, '--json', 'url', '--jq', '.url'],
+                        check=False,
+                        quiet_stderr=True,
+                    ),
+                )
+
+            # CLI create often fails on huge file lists; try the lighter REST path.
+            cli.progress('CLI create did not succeed; trying GitHub API...')
+            api_url = create_pull_request_via_api(
+                head_branch, project_name, target_repo, body_path,
+            )
+            if looks_like_url(api_url or ''):
+                return api_url
+
+            # Maybe the PR appeared anyway (race / partial success).
+            existing = _usable_gh_string(
                 gh(
                     ['pr', 'view', head_branch, '--json', 'url', '--jq', '.url'],
                     check=False,
                     quiet_stderr=True,
                 ),
             )
+            if looks_like_url(existing or ''):
+                return existing
 
-        # CLI create often fails on huge file lists; try the lighter REST path.
-        cli.progress('CLI create did not succeed; trying GitHub API...')
-        api_url = create_pull_request_via_api(head_branch, project_name, target_repo)
-        if looks_like_url(api_url or ''):
-            return api_url
-
-        # Maybe the PR appeared anyway (race / partial success).
-        existing = _usable_gh_string(
-            gh(
-                ['pr', 'view', head_branch, '--json', 'url', '--jq', '.url'],
-                check=False,
-                quiet_stderr=True,
-            ),
-        )
-        if looks_like_url(existing or ''):
-            return existing
-
-        if attempt < attempts:
-            cli.progress(
-                f'GitHub may still be processing the push; retrying in {delay_s}s...',
-            )
-            time.sleep(delay_s)
-    return None
+            if attempt < attempts:
+                cli.progress(
+                    f'GitHub may still be processing the push; retrying in {delay_s}s...',
+                )
+                time.sleep(delay_s)
+        return None
+    finally:
+        body_path.unlink(missing_ok=True)
 
 
 def print_manual_pr_next_steps(user: str, head_branch: str, target_repo) -> None:
@@ -559,7 +617,10 @@ try:
     print(f'  Repository    : {target_repo.base_repo}')
     print(f'  Project path  : {project_path}')
     print(f'  Project name  : {project_name}')
-    print(f'  Branch        : {branch_name}')
+    if target_repo.metadata_only:
+        print('  Output        : metadata.json only (no pull request)')
+    else:
+        print(f'  Branch        : {branch_name}')
     has_existing_metadata = metadata_path.exists()
     meta_status = (
         f'{ICON_SUCCESS} found' if has_existing_metadata
@@ -567,10 +628,16 @@ try:
     )
     print(f'  Project layout: {target_repo.project_layout}')
     print(f'  metadata.json : {meta_status}')
-    readme_status = (
-        f'{ICON_SUCCESS} found' if (project_path / 'README.md').is_file()
-        else f'{ICON_WARNING} missing (required)'
-    )
+    if target_repo.metadata_only:
+        readme_status = (
+            f'{ICON_SUCCESS} found' if (project_path / 'README.md').is_file()
+            else f'{ICON_INFO} optional for this target'
+        )
+    else:
+        readme_status = (
+            f'{ICON_SUCCESS} found' if (project_path / 'README.md').is_file()
+            else f'{ICON_WARNING} missing (required)'
+        )
     print(f'  README.md     : {readme_status}')
     print()
     if not confirm('Proceed with this project and repository?'):
@@ -622,6 +689,16 @@ try:
         )
         metadata = args.metadata
 
+    # metadata_only is a target flag. Any future repo with it set stops here;
+    # field contents still come from that repo's schema.
+    if target_repo.metadata_only:
+        print()
+        print(
+            f'{ICON_SUCCESS} Wrote {metadata_path}. '
+            f'Nothing is pushed to {target_repo.base_repo}.',
+        )
+        sys.exit(0)
+
     # Create CLI early so layout checks and GitHub setup can show spinners/progress.
     print()
     print_header('Forking & Syncing Repository', icon=ICON_PROGRESS)
@@ -638,6 +715,12 @@ try:
 except ValueError as exc:
     print(f'{ICON_ERROR} Error: {exc}', file=sys.stderr)
     sys.exit(1)
+except KeyboardInterrupt:
+    print()
+    print_header('Process Aborted', icon=ICON_ABORT)
+    print(f'  {ICON_ABORT} Interrupted by user (Ctrl+C).')
+    print()
+    sys.exit(130)
 
 cli.progress('Checking git version...')
 cli.ensure_git_version()

@@ -5,6 +5,7 @@ DEEPCRAFT&trade; GitHub repositories:
 
 * [Infineon/deepcraft-studio-accelerators](https://github.com/Infineon/deepcraft-studio-accelerators) (`--repo accelerators`)
 * [Infineon/deepcraft-model-zoo-for-psoc](https://github.com/Infineon/deepcraft-model-zoo-for-psoc) (`--repo model-zoo-psoc`)
+* [Infineon/deepcraft-model-zoo-for-aurix](https://github.com/Infineon/deepcraft-model-zoo-for-aurix) (`--repo model-zoo-aurix`) — **metadata file only**; the tool does not fork, push, or open a pull request
 
 The tool wraps `git` and the bundled GitHub CLI (`pr_tool/gh.exe`) to automate the whole workflow
 for you:
@@ -34,6 +35,10 @@ just re-run it after making changes to your project.
 No additional Python packages are required &mdash; the tool only uses the
 standard library.
 
+On startup the tool checks GitHub and updates itself to the latest published
+copy, unless you pass `--no-update` or you are running from a git checkout
+(use `git pull` in that case). A failed update does not stop the run.
+
 Project image names and tags are read from **`pr_tool/images.json` only**
 (shipped with the tool). The catalog is not downloaded from the network.
 
@@ -43,9 +48,10 @@ Project image names and tags are read from **`pr_tool/images.json` only**
 | --- | --- | --- |
 | `accelerators` | `Infineon/deepcraft-studio-accelerators` | `accelerator_layout` (DEEPCRAFT&trade; Studio, below) |
 | `model-zoo-psoc` | `Infineon/deepcraft-model-zoo-for-psoc` | `model_zoo_psoc_layout` (README + metadata only) |
+| `model-zoo-aurix` | `Infineon/deepcraft-model-zoo-for-aurix` | `metadata_only_layout` (metadata-only target: writes `metadata.json`; no publish) |
 
-Every layout requires **`README.md`** and **`metadata.json`** at the project root.
-Metadata is collected the same way for both repositories.
+Every publishing layout requires **`README.md`** and **`metadata.json`** at the project root.
+A metadata-only target (currently `model-zoo-aurix`) only writes `metadata.json` and does not publish.
 
 The `--repo` argument is **required** on every run.
 
@@ -85,7 +91,7 @@ the folder name doesn't match the desired project name.
 
 ## Project layout requirements (`--repo model-zoo-psoc`)
 
-For the [Model Zoo for PSOC](https://github.com/Infineon/deepcraft-model-zoo-for-psoc),
+For the [Model Zoo for PSOC&trade;](https://github.com/Infineon/deepcraft-model-zoo-for-psoc),
 the project folder must include **`README.md`** and **`metadata.json`** at its
 root. Other files and folders at the root are allowed (for example deployment
 code, HEX files, or model assets).
@@ -96,6 +102,27 @@ The project name defaults to the project folder name and is used as the
 letters, digits, `.`, `_`, and `-` are allowed; it must start and end with a
 letter or digit; **spaces are not allowed** (and characters such as `\ / : * ? "
 < > | ~ ^ [` are rejected).
+
+## Metadata-only targets
+
+A metadata-only target writes `metadata.json` in the folder you pass with `--path` and then stops. It does not fork the repository, push files, or open a pull request. `README.md` is optional. The project name defaults to the folder name and must be folder- and branch-safe (same rules as Model Zoo for PSOC&trade;).
+
+This behavior comes from the target setting, not from a particular repository. `model-zoo-aurix` is the metadata-only target today. Another repository added later with the same setting follows this path automatically; its `metadata.json` fields come from its own schema.
+
+### Model Zoo for AURIX&trade; (`--repo model-zoo-aurix`)
+
+The file matches metadata already published in the [Model Zoo for AURIX&trade;](https://github.com/Infineon/deepcraft-model-zoo-for-aurix):
+
+* `algorithm` is chosen from the list (it is not read from an `.improj` file).
+* `kit` / `device` use the AURIX&trade; and TRAVEO&trade; boards from the model zoo. Device is derived from the selected kit.
+* `type` is stored as one entry, `Model Development, Model Deployment` (both are selected by default; press Enter to keep them). `workflow` is the matching pair of ML workflow values.
+* `brand` defaults to DEEPCRAFT&trade; (press Enter to keep it). A brand already saved in `metadata.json` is offered instead.
+* `videos` are optional and are stored after `brand_url`. Skip them, or add one or more single-video links.
+* `links` are filled automatically: a Model Zoo link (with heading) and a GitHub link to `.../tree/main/<project name>` (label and URL only).
+
+```bash
+python ./pr_tool.py --repo model-zoo-aurix --path C:\Projects\KeywordDetection
+```
 
 ## Local git and Python environments
 
@@ -146,16 +173,38 @@ your selected `--repo`.
 
 | Topic | Behaviour |
 | --- | --- |
-| **Choices** (sensors, domain, kit, …) | Pick by number from the AI Hub list, or type a custom value (one confirmation). Custom text is title-cased (`smart home` → `Smart Home`). |
+| **Long description** | Choose `1` to type in the terminal or `2` to open Notepad. The same choice is shown when a value is already saved: Enter keeps it, `1` puts the saved text on the terminal input line so you can change it with the arrow keys and Backspace, and `2` opens that saved text in Notepad. After you press Enter on the edited text, type `END` to finish. Either way, go to a new line and type `END` when the text is finished, or `EDIT` to open the whole text in Notepad again. The terminal can change only the line you are typing. Headings and images are not accepted. **Plain text** is stored as one line (line breaks become spaces). **Markdown** needs those line breaks to recognize lists and code; it is then converted to one line of HTML. **Text HTML** must use the tags in [Long description tags](#long-description-tags). Straight `"` in the text is stored as curly quotes, and HTML attributes use single quotes, so the value stays valid inside `metadata.json`. |
+| **Sensors, domain** | Select from the lists the tool shows. A new value is accepted only if none of the listed options fits, and only after you confirm it. |
+| **Other choices** (use case, kit, …) | Pick by number from the AI Hub list, or type a custom value (one confirmation). Custom text is title-cased (`smart home` → `Smart Home`). **Application**, **project type**, and **algorithm** must be chosen from the list. |
 | **Kit → device** | Device is derived from kit(s); custom kit names prompt for device. |
 | **Type → workflow** | Pick one or both types (`1,2`); workflow is set automatically. |
-| **Brand** | Infineon, a listed partner, or **New Brand/Partner** (custom image + URL). |
-| **Links** | Filled automatically (accelerators: Studio + GitHub; model-zoo: GitHub). |
+| **Brand** | Infineon, a listed partner, or **New Brand/Partner** (custom image + URL). Model Zoo for AURIX&trade; defaults to DEEPCRAFT&trade;. |
+| **Links** | Filled automatically (accelerators: Studio + GitHub; model-zoo PSOC&trade;: GitHub; model-zoo AURIX&trade;: Model Zoo + GitHub). |
+| **Videos** | Optional. Each entry needs `title`, `description`, and a **single-video** `link` (YouTube, Vimeo, Dailymotion, Wistia, Loom, or a direct video file). Title and description are stored as one line; a straight `"` becomes a curly quote so the value stays valid inside `metadata.json`. YouTube playlists, other collections, and regular web pages are rejected. A link that is already in the list, including the same YouTube video under another URL, must be entered again. Skip if the project has no videos. Choosing redo after the metadata overview asks whether the existing videos should be changed. Answering yes opens the menu: Enter keeps the list, a number edits that video, `d<N>` deletes video N, `a` adds a video, and `n` erases all videos. Videos with a bad or repeated link are marked and must be edited or deleted before you continue. |
 | **Image** | Auto-pick from `images.json` by tags, or choose interactively. `--image` / `--tag` skip the prompt. |
 | **Accelerators only** | First pass: `algorithm` from `{Project}.improj` `<ProjectType>`; for `ObjectDetection` / `ImageClassification` also auto-sets `sensors=Camera`, `domain=Vision`, and Edge kit/device. After the metadata overview, choose **n** to re-edit every field (including those defaults). |
-| **Model zoo only** | `metrics` optional (fixed labels, you enter values). |
+| **Model zoo PSOC&trade; only** | `metrics` optional (fixed labels, you enter values). `videos` optional. |
+| **Model zoo AURIX&trade; only** | Metadata file only (no pull request). `algorithm` is prompted. Kits and devices are the AURIX&trade;/TRAVEO&trade; boards. `type` is one combined value. `brand` defaults to DEEPCRAFT&trade;. `videos` optional. No `metrics`. |
 
-All fields are required except `metrics` on `model-zoo-psoc`.
+All fields are required except **videos** (all three targets) and **metrics** on `model-zoo-psoc`. `model-zoo-aurix` does not include metrics. HTML in the long description is optional. Whatever form you enter is stored as a single line.
+
+### Long description tags
+
+Plain text with none of this markup is stored as plain text. Markdown is converted into the same tags. Images, media, scripts, comments, and any attribute other than `href` are rejected.
+
+| Tag | Use | Status |
+| --- | --- | --- |
+| `p` | Paragraph | Accepted |
+| `br` | Line break | Accepted |
+| `h1`–`h6` | Headings. Markdown `#` headings use the same code | Implemented, turned off |
+| `ul`, `ol`, `li` | Lists | Accepted |
+| `strong`, `b` | Bold | Accepted |
+| `em`, `i` | Italic | Accepted |
+| `a` | Link. The only allowed attribute is `href` (`http`, `https`, `mailto`, `#fragment`, or a root-relative path) | Accepted |
+| `blockquote` | Quotation | Accepted |
+| `code` | Inline code | Accepted |
+| `pre` | Code block, together with `code` | Accepted |
+| `hr` | Horizontal rule | Accepted |
 
 If **`metadata.json` already exists**, the tool loads it first: missing fields
 are prompted; values not in the AI Hub–based suggested lists show a warning
@@ -249,6 +298,7 @@ that run finishes.
 | `--image <name>` | Image name to use directly (e.g. `Audio.webp`). Skips the tag-based auto-selection and the interactive image prompt. |
 | `--tag <tag>` | Tag used to auto-pick a project image. Can be passed multiple times (e.g. `--tag audio --tag "smart home"`). Skips the interactive image prompt but not the auto-selection step. Not saved to `metadata.json`. |
 | `--override-metadata` | Regenerate `metadata.json` from the options above even if one already exists. |
+| `--no-update` | Skip the startup check for a newer version of this tool. |
 | `--verbose`, `-v` | Print every `git`/`gh` command and captured output (default is short progress lines only). |
 
 For the complete list of options, run:
@@ -298,14 +348,14 @@ python ./pr_tool.py \
   --tag motion
 ```
 
-Model Zoo for PSOC:
+Model Zoo for PSOC&trade;:
 
 ```bash
 python ./pr_tool.py \
   --repo model-zoo-psoc \
   --path C:\Projects\ArcFace \
   --title "ArcFace" \
-  --description "Face recognition model for PSOC" \
+  --description "Face recognition model for PSOC&trade;" \
   --sensor Camera
 ```
 
