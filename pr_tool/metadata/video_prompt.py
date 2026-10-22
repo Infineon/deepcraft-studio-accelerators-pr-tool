@@ -169,11 +169,29 @@ def _manage_videos(videos: list[dict]) -> list[dict] | None:
         print(f'{constants.ICON_WARNING} Unknown option {raw!r}. Choose one of the options listed.')
 
 
-def collect_videos(previous: dict) -> list[dict] | None:
-    """Ask for zero or more videos, then let the user keep, edit, add, or delete them."""
+def _ask(question: str) -> bool:
+    """Ask a yes/no question on its own, below the field that came before it."""
+    print()
+    print(_separator('-'))
+    return confirm(question)
+
+
+def collect_videos(previous: dict, *, review: bool = False) -> list[dict] | None:
+    """Ask for zero or more videos, then let the user keep, edit, add, or delete them.
+
+    During a metadata redo, saved videos stay as they are unless the user asks
+    to change them. A saved video with a bad or repeated link still has to be fixed.
+    """
     existing = _normalize_videos(previous.get('videos'))
     if existing is None:
-        if not confirm('Add videos? (optional — answer n to skip)'):
+        if not _ask('Add videos? (optional — answer n to skip)'):
             return None
         existing = [_collect_video('Video 1', {}, taken=[])]
+    elif review and not _ask('Change existing videos?'):
+        if not _video_problems(existing):
+            return existing
+        print(
+            f'{constants.ICON_WARNING} Existing videos still need to be edited or deleted '
+            'before they can be kept.',
+        )
     return _manage_videos(existing)

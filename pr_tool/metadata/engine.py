@@ -400,7 +400,7 @@ def _collect_field(
     if field.kind == 'model_zoo_aurix_links':
         return model_zoo_aurix_links(project_name)
     if field.kind == 'videos':
-        return collect_videos(previous)
+        return collect_videos(previous, review=review_pass)
     if field.kind == 'metrics':
         return _collect_metrics(previous)
     raise ValueError(f'Unknown field kind: {field.kind!r}')

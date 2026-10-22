@@ -89,10 +89,15 @@ def validate_loaded_metadata(
     project_name: str | None = None,
     project_path: Path | None = None,
 ) -> dict:
-    """Validate loaded metadata; prompt for missing fields, confirm on choice violations."""
+    """Validate loaded metadata and offer optional videos when they have not been set."""
     from metadata import confirm_metadata
 
     current = _repair_image_mirror(dict(metadata))
+    optional_to_offer = {
+        spec.key
+        for spec in schema.fields
+        if not spec.required and spec.kind == 'videos' and current.get(spec.key) is None
+    }
     while True:
         result = validate_metadata(current, schema, project_name, project_path)
         if result.missing or result.other:
@@ -142,6 +147,11 @@ def validate_loaded_metadata(
                 current = collect_missing(current, result.choice_fields)
                 current = _repair_image_mirror(current)
                 continue
+        if optional_to_offer:
+            current = collect_missing(current, optional_to_offer)
+            current = _repair_image_mirror(current)
+            optional_to_offer.clear()
+            continue
         return finalize_metadata(current, schema)
 
 

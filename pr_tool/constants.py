@@ -1,6 +1,6 @@
 # ── Git & GitHub ─────────────────────────────────────────────
 HOST = 'https://github.com'
-BASE_REPO_OWNER = 'Infineon'
+BASE_REPO_OWNER = 'angelodm-imagimob' #'Infineon'
 MAIN_BRANCH = 'main'
 GIT_DIR = '.git_deepcraft'
 MINIMUM_UPDATABLE_GIT_VERSION = '2.16.2'  # update-git-for-windows option
@@ -35,7 +35,7 @@ TARGET_REPOS: dict[str, TargetRepo] = {
         key='model-zoo-psoc',
         repo_name='deepcraft-model-zoo-for-psoc',
         label=f'{DEEPCRAFT} Model Zoo for {PSOC}',
-        pr_title_template=f'Model Zoo {PSOC} {{project_name}}',
+        pr_title_template='Model Zoo PSOC {project_name}',
         project_layout='model_zoo_psoc_layout',
         git_ignored_dirs=(),
     ),
