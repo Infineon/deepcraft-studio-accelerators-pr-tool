@@ -8,12 +8,13 @@ import tempfile
 from pathlib import Path
 
 import constants
-from metadata.long_description import normalize_long_description, validate_long_description
+from metadata.long_description import (
+    looks_like_html,
+    looks_like_markdown,
+    normalize_long_description,
+    validate_long_description,
+)
 from metadata.prompts import _separator
-
-
-_LONG_TEXT_END = 'END'
-_LONG_TEXT_EDIT = 'EDIT'
 
 
 def _print_between_separators(message: str) -> None:
@@ -68,13 +69,102 @@ def _wait_for_editor(process: subprocess.Popen) -> None:
             continue
 
 
-def _edit_long_text(lines: list[str]) -> list[str] | None:
-    """Open the whole description in an editor so any line can be changed.
+_BOX_WIDTH = 78
+_BOX_CHARS = set('┌┐└┘├┤│─ ')
 
-    Returns the new lines, or ``None`` when no editor could be started.
-    The terminal itself can change only the line currently being typed.
-    Ctrl+C closes the editor and aborts the tool.
-    """
+
+def _box_edge(left: str, right: str) -> str:
+    return left + '─' * (_BOX_WIDTH - 2) + right
+
+
+def _box_line(text: str) -> str:
+    return f'│ {text.ljust(_BOX_WIDTH - 4)} │'
+
+
+def _box_blank() -> str:
+    return _box_line('')
+
+
+def _box_rule() -> str:
+    return _box_edge('├', '┤')
+
+
+_NOTEPAD_TOP = _box_edge('┌', '┐')
+_NOTEPAD_BOTTOM = _box_edge('└', '┘')
+_NOTEPAD_HEADER = (
+    _NOTEPAD_TOP,
+    _box_line('Enter the long description below this box.'),
+    _box_blank(),
+    _box_rule(),
+    _box_blank(),
+    _box_line('Plain text, Markdown, or HTML are accepted.'),
+    _box_line('Headings and images are not accepted.'),
+    _box_blank(),
+    _box_rule(),
+    _box_blank(),
+    _box_line('HTML may use <p></p>, <br>, <ul></ul>, <ol></ol>, <li></li>,'),
+    _box_line('<strong></strong>, <em></em>, <a href="..."></a>.'),
+    _box_blank(),
+    _box_rule(),
+    _box_blank(),
+    _box_line('Lines inside this box are not saved.'),
+    _NOTEPAD_BOTTOM,
+)
+_NOTEPAD_MARKER = _NOTEPAD_BOTTOM
+
+
+_HEADER_SIGNATURES = (
+    'enter the long description below',
+    'plain text, markdown, or html are accepted',
+    'headings and images are not accepted',
+    'lines inside this box are not saved',
+    'lines that belong to this header are not saved',
+    'the lines above the marker are not saved',
+    'html may use <p></p>',
+    '<strong></strong>, <em></em>, <a href=',
+)
+
+
+def _is_box_border(line: str) -> bool:
+    stripped = line.strip()
+    return bool(stripped) and set(stripped) <= _BOX_CHARS
+
+
+def _is_header_instruction(line: str) -> bool:
+    """True for an instruction line, a box border, or a leftover piece of either."""
+    stripped = line.strip()
+    if _is_box_border(stripped) or stripped[:1] in '┌┐└┘├┤│':
+        return True
+    folded = stripped.strip('│').strip().lower()
+    if folded.startswith('-----') and ('below' in folded or 'do not delete' in folded):
+        return True
+    return any(signature in folded for signature in _HEADER_SIGNATURES)
+
+
+def _strip_notepad_header(body: str) -> str:
+    """Keep the user's text and drop the instruction box, even when part of it is deleted."""
+    lines = body.split('\n')
+    for index, line in enumerate(lines):
+        if line.strip() == _NOTEPAD_BOTTOM:
+            return '\n'.join(lines[index + 1:])
+    kept = [line for line in lines if not _is_header_instruction(line)]
+    while kept and not kept[0].strip():
+        del kept[0]
+    return '\n'.join(kept)
+
+
+def _read_notepad_body(body: str) -> list[str]:
+    """Return the description lines, without the Notepad header."""
+    if body.endswith('\n'):
+        body = body[:-1]
+    text = _strip_notepad_header(body)
+    if text.endswith('\n'):
+        text = text[:-1]
+    return text.split('\n') if text else []
+
+
+def _open_notepad(lines: list[str]) -> list[str] | None:
+    """Open Notepad once. ``None`` means it could not be started."""
     editor = os.environ.get('EDITOR') or os.environ.get('VISUAL')
     if not editor and os.name == 'nt':
         editor = 'notepad'
@@ -86,6 +176,8 @@ def _edit_long_text(lines: list[str]) -> list[str] | None:
     path = Path(handle.name)
     process: subprocess.Popen | None = None
     try:
+        handle.write('\n'.join(_NOTEPAD_HEADER))
+        handle.write('\n')
         handle.write('\n'.join(lines))
         if lines:
             handle.write('\n')
@@ -103,9 +195,17 @@ def _edit_long_text(lines: list[str]) -> list[str] | None:
     finally:
         handle.close()
         path.unlink(missing_ok=True)
-    if body.endswith('\n'):
-        body = body[:-1]
-    return body.split('\n') if body else []
+    return _read_notepad_body(body)
+
+
+def _edit_long_text(lines: list[str]) -> list[str] | None:
+    """Open the whole description in an editor so any line can be changed.
+
+    Returns the new lines, or ``None`` when no editor could be started.
+    Header lines are ignored, including when the user deletes some of them.
+    Ctrl+C closes the editor and aborts the tool.
+    """
+    return _open_notepad(lines)
 
 
 def _read_line(prompt: str) -> str | None:
@@ -191,21 +291,9 @@ def _read_prefilled(prompt: str, text: str) -> tuple[str | None, bool]:
             readline.set_startup_hook()
 
 
-def _show_terminal_edit_hint() -> None:
-    print(_separator('-'))
-    print('  The current text is on the line below. Change it, then press Enter.')
-    print(f'  Then type {_LONG_TEXT_END} to finish, or {_LONG_TEXT_EDIT} to open Notepad.')
-    print(_separator('-'))
-
-
-def _show_loaded_lines(lines: list[str]) -> None:
-    print(_separator('='))
-    print(f'{constants.ICON_SUCCESS} Loaded {len(lines)} line(s) from the editor:')
-    _show_long_text_lines(lines)
-    print(_separator('-'))
-    print(f'  Type {_LONG_TEXT_END} on its own line when this text is finished.')
-    print(f'  Type {_LONG_TEXT_EDIT} on its own line to open Notepad again.')
-    print(_separator('-'))
+def _is_plain_text(text: str) -> bool:
+    """True when the terminal can accept *text* without treating it as markup."""
+    return not looks_like_html(text) and not looks_like_markdown(text)
 
 
 def _load_from_editor(lines: list[str]) -> list[str] | None:
@@ -213,10 +301,9 @@ def _load_from_editor(lines: list[str]) -> list[str] | None:
     edited = _edit_long_text(lines)
     if edited is None:
         _print_between_separators(
-            'Could not open Notepad. Set the EDITOR variable, or keep typing. Please try again.',
+            'Could not open Notepad. Set the EDITOR variable. Please try again.',
         )
         return None
-    _show_loaded_lines(edited)
     return edited
 
 
@@ -230,13 +317,12 @@ def _choose_entry_mode(*, has_current: bool = False) -> str:
     if has_current:
         print('  Choose how to update the long description.')
         print('  Enter  keep the current value')
-        print('  1. Edit in this terminal')
-        print('  2. Edit in Notepad')
+        print('  1. Replace it with plain text in this terminal')
+        print('  2. Modify it in Notepad')
     else:
         print('  Where do you want to write the long description?')
-        print('  1. In this terminal')
-        print('  2. In Notepad')
-    print(f'  {_LONG_TEXT_END} and {_LONG_TEXT_EDIT} stay available either way.')
+        print('  1. Plain text in this terminal')
+        print('  2. Notepad for plain text, Markdown, or HTML')
     print(_separator('-'))
     prompt = 'Choice (Enter, 1, or 2): ' if has_current else 'Choice (1 or 2): '
     retry = (
@@ -269,16 +355,83 @@ def _kept_value(default: str) -> str | None:
     return normalize_long_description(default)
 
 
+def _read_plain_line(seed: str) -> str | None:
+    """Read one line of plain text. ``None`` means end of input."""
+    print(_separator('-'))
+    print('  Plain text of any length. Markdown and HTML are not accepted here.')
+    if not seed:
+        return _read_line(': ')
+    line, prefilled = _read_prefilled(': ', seed)
+    if line is None:
+        return None
+    if not line.strip() and not prefilled:
+        return seed
+    return line.rstrip()
+
+
+def _confirm_or_modify(lines: list[str], mode: str) -> str:
+    """Return ``confirm``, ``modify``, or ``notepad``.
+
+    ``notepad`` is offered after plain text, so the same line can be continued
+    in Notepad.
+    """
+    print(_separator('='))
+    if mode == 'notepad':
+        print(f'{constants.ICON_SUCCESS} Loaded {len(lines)} line(s) from Notepad:')
+        _show_long_text_lines(lines)
+        print(_separator('-'))
+    print('  Enter  confirm this text')
+    if mode == 'terminal':
+        print('  m      modify it in this terminal')
+        print('  n      continue in Notepad')
+        prompt = 'Choice (Enter, m, or n): '
+        retry = (
+            'Press Enter to confirm, type m to modify, '
+            'or type n to continue in Notepad. Please try again.'
+        )
+    else:
+        print('  m      modify it in Notepad')
+        prompt = 'Choice (Enter or m): '
+        retry = 'Press Enter to confirm, or type m to modify. Please try again.'
+    print(_separator('-'))
+    while True:
+        answer = _read_line(prompt)
+        if answer is None:
+            raise EOFError
+        answer = answer.strip().lower()
+        if answer == '':
+            return 'confirm'
+        if answer in ('m', 'modify'):
+            return 'modify'
+        if mode == 'terminal' and answer in ('n', 'notepad'):
+            return 'notepad'
+        _print_between_separators(retry)
+
+
+def _stored_value(raw: str, max_len: int | None) -> tuple[str | None, str | None]:
+    """Return ``(value, error)``. Exactly one of the two is set."""
+    error = validate_long_description(raw)
+    if error:
+        return None, error
+    value = normalize_long_description(raw)
+    if not value:
+        return None, 'Value cannot be empty'
+    if max_len is not None and len(value) > max_len:
+        return None, f'Value is more than {max_len} characters'
+    return value, None
+
+
 def input_html_text(
     name: str,
     max_len: int | None = None,
     default: str | None = None,
 ) -> str:
-    """Collect multiline plain text, Markdown, or text HTML (no images).
+    """Collect a long description.
 
-    The stored value is one line. Newlines matter only while Markdown is read.
-    The user chooses the terminal or Notepad, including when a value is already saved.
-    ``END`` on its own line finishes. ``EDIT`` opens the whole text in Notepad.
+    The terminal accepts plain text of any length, without line breaks.
+    Notepad accepts plain text, Markdown, or HTML. Enter confirms the text,
+    and ``m`` opens it again. After plain text, ``n`` continues that text in
+    Notepad. Markdown from Notepad is stored as HTML.
     """
     top_sep = _separator('=')
     bottom_sep = _separator('-')
@@ -296,94 +449,63 @@ def input_html_text(
         f'{name}{limit_line}\n'
         f'{bottom_sep}\n'
         f'{current_block}'
-        f'  The terminal can change only the line you are typing.\n'
-        f'  To change the text, go to a new line, type {_LONG_TEXT_EDIT}, and press Enter.\n'
-        f'  That opens the whole text in Notepad. Change it, save, and close Notepad.\n'
-        f'  When you are finished, go to a new line, type {_LONG_TEXT_END}, and press Enter.\n'
+        f'  Terminal: plain text of any length, without line breaks.\n'
+        f'  Notepad: plain text, Markdown, or HTML.\n'
         f'\n'
-        f'  Plain text is stored as one line.\n'
+        f'  Press Enter to confirm the text, or type m to modify it.\n'
+        f'  After plain text, type n to continue in Notepad.\n'
+        f'\n'
+        f'  Plain text is stored without line breaks.\n'
         f'  Markdown (lists, **bold**, *italic*, [links](url)) is converted to HTML.\n'
         f'  Headings and images are not accepted.\n'
         f'  HTML may use <p></p>, <br>, <ul></ul>, <ol></ol>, <li></li>, '
         f'<strong></strong>, <em></em>, <a href="..."></a>.\n'
         f'{bottom_sep}'
     )
-    lines: list[str] = []
-    started = False
     mode = _choose_entry_mode(has_current=bool(default))
     if mode == 'keep' and default:
         kept = _kept_value(default)
         if kept is not None:
             return kept
-        mode = 'terminal'
-    if mode == 'notepad':
-        source = (default.splitlines() or ['']) if default else lines
-        opened = _load_from_editor(source)
-        if opened is not None:
-            lines = opened
-            started = True
-    pending: list[str] = []
-    if mode == 'terminal' and default:
-        pending = default.splitlines() or ['']
-        started = True
-        _show_terminal_edit_hint()
+        mode = 'terminal' if _is_plain_text(default) else 'notepad'
+    draft = default.splitlines() if default else []
     while True:
-        prompt = f'{len(lines) + 1}> '
-        prefilled = False
-        if pending:
-            line, prefilled = _read_prefilled(prompt, pending[0])
-        else:
-            line = _read_line(prompt)
-        if line is None:
-            line = _LONG_TEXT_END
-            end_of_input = True
-        else:
-            end_of_input = False
-        command = line.strip().upper()
-        if command == _LONG_TEXT_EDIT:
-            source = lines + pending if started or not default else default.splitlines() or ['']
-            edited = _load_from_editor(source)
-            if edited is not None:
-                lines[:] = edited
-                pending.clear()
-                started = True
-            continue
-        if command == _LONG_TEXT_END:
-            lines.extend(pending)
-            pending.clear()
-            raw = '\n'.join(lines)
-            error = validate_long_description(raw)
-            if error:
-                if end_of_input:
-                    raise EOFError
-                print('  Text so far:')
-                _show_long_text_lines(lines)
-                _print_between_separators(_retry_message(error))
-                print(
-                    f'  Type {_LONG_TEXT_EDIT} on its own line to change the text, '
-                    f'then {_LONG_TEXT_END} when it is fixed.'
-                )
-                continue
-            value = normalize_long_description(raw)
-            if not value:
-                if end_of_input:
-                    raise EOFError
+        if mode == 'terminal':
+            seed = ''
+            if draft and _is_plain_text('\n'.join(draft)):
+                seed = ' '.join(line.strip() for line in draft if line.strip())
+            entered = _read_plain_line(seed)
+            if entered is None:
+                raise EOFError
+            lines = [entered]
+            raw = entered
+            if not raw.strip():
                 _print_between_separators('Value cannot be empty. Please try again.')
                 continue
-            if max_len is not None and len(value) > max_len:
-                if end_of_input:
-                    raise EOFError
+            if not _is_plain_text(raw):
                 _print_between_separators(
-                    f'Value is more than {max_len} characters. Please try again.',
+                    'The terminal accepts plain text only. '
+                    'Use Notepad for Markdown or HTML. Please try again.',
                 )
+                draft = [raw]
+                mode = _choose_entry_mode(has_current=False)
                 continue
-            return value
-        if pending:
-            saved = pending.pop(0)
-            if line.strip():
-                lines.append(line.rstrip())
-            elif not prefilled:
-                lines.append(saved)
+        else:
+            opened = _load_from_editor(draft)
+            if opened is None:
+                continue
+            lines = opened
+            raw = '\n'.join(lines)
+        value, error = _stored_value(raw, max_len)
+        if error or value is None:
+            print('  Text:')
+            _show_long_text_lines(lines)
+            _print_between_separators(_retry_message(error or 'Value cannot be empty'))
+            draft = lines
             continue
-        lines.append(line.rstrip())
-        started = True
+        action = _confirm_or_modify(lines, mode)
+        if action == 'confirm':
+            return value
+        if action == 'notepad':
+            mode = 'notepad'
+        draft = lines

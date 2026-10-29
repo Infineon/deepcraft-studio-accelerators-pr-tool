@@ -98,7 +98,8 @@ code, HEX files, or model assets).
 
 The project name defaults to the project folder name and is used as the
 **branch name** on GitHub (for example `ArcFace`, `Yolov8nPose`, or
-`EfficientNetV2-S`). It must be safe for a **local folder name and a Git branch**:
+`EfficientNetV2-S`). The pull request title is `Model Zoo PSOC <project name>`.
+It must be safe for a **local folder name and a Git branch**:
 letters, digits, `.`, `_`, and `-` are allowed; it must start and end with a
 letter or digit; **spaces are not allowed** (and characters such as `\ / : * ? "
 < > | ~ ^ [` are rejected).
@@ -173,7 +174,7 @@ your selected `--repo`.
 
 | Topic | Behaviour |
 | --- | --- |
-| **Long description** | Choose `1` to type in the terminal or `2` to open Notepad. The same choice is shown when a value is already saved: Enter keeps it, `1` puts the saved text on the terminal input line so you can change it with the arrow keys and Backspace, and `2` opens that saved text in Notepad. After you press Enter on the edited text, type `END` to finish. Either way, go to a new line and type `END` when the text is finished, or `EDIT` to open the whole text in Notepad again. The terminal can change only the line you are typing. Headings and images are not accepted. **Plain text** is stored as one line (line breaks become spaces). **Markdown** needs those line breaks to recognize lists and code; it is then converted to one line of HTML. **Text HTML** must use the tags in [Long description tags](#long-description-tags). Straight `"` in the text is stored as curly quotes, and HTML attributes use single quotes, so the value stays valid inside `metadata.json`. |
+| **Long description** | Choose `1` for plain text of any length in the terminal, entered without line breaks, or `2` to open Notepad for plain text, Markdown, or HTML. Notepad opens with the instructions inside a box. Blank rows and horizontal lines separate the sections of that box. Lines from the box are not saved, including when some of them are deleted; the remaining text is the description. Press Enter to confirm the text, or type `m` to modify it. After plain text, the text you typed is left on the input row, and `n` continues it in Notepad. A saved value is shown first: Enter keeps it, `1` replaces it with plain text, and `2` modifies it in Notepad. Headings and images are not accepted. **Plain text** is stored without line breaks. **Markdown** from Notepad is converted to HTML and stored without line breaks. **Text HTML** from Notepad must use the tags in [Long description tags](#long-description-tags). Straight `"` in the text is stored as curly quotes, and HTML attributes use single quotes, so the value stays valid inside `metadata.json`. |
 | **Sensors, domain** | Select from the lists the tool shows. A new value is accepted only if none of the listed options fits, and only after you confirm it. |
 | **Other choices** (use case, kit, …) | Pick by number from the AI Hub list, or type a custom value (one confirmation). Custom text is title-cased (`smart home` → `Smart Home`). **Application**, **project type**, and **algorithm** must be chosen from the list. |
 | **Kit → device** | Device is derived from kit(s); custom kit names prompt for device. |
@@ -186,7 +187,7 @@ your selected `--repo`.
 | **Model zoo PSOC&trade; only** | `metrics` optional (fixed labels, you enter values). `videos` optional. |
 | **Model zoo AURIX&trade; only** | Metadata file only (no pull request). `algorithm` is prompted. Kits and devices are the AURIX&trade;/TRAVEO&trade; boards. `type` is one combined value. `brand` defaults to DEEPCRAFT&trade;. `videos` optional. No `metrics`. |
 
-All fields are required except **videos** (all three targets) and **metrics** on `model-zoo-psoc`. `model-zoo-aurix` does not include metrics. HTML in the long description is optional. Whatever form you enter is stored as a single line.
+All fields are required except **videos** (all three targets) and **metrics** on `model-zoo-psoc`. `model-zoo-aurix` does not include metrics. HTML in the long description is optional. Whatever form you enter is stored without line breaks.
 
 ### Long description tags
 

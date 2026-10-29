@@ -57,7 +57,7 @@ GitHub auth, fork sync, branching, push, and opens the PR in your browser.
 | **`pr_tool/metadata/engine.py`** | Walks the schema to collect metadata interactively: derived device/workflow/algorithm, brand handling, links, and schema-ordered output. |
 | **`pr_tool/metadata/improj.py`** | Reads `{Project}.improj` `<ProjectType>` and maps it to `algorithm` (and vision defaults for object detection / image classification). |
 | **`pr_tool/metadata/prompts.py`** | Interactive prompts (`input_str`, `input_choice`, `input_choices`, confirmations) including custom-value title-casing. |
-| **`pr_tool/metadata/long_description_prompt.py`** | Long-description prompt. The first time, choose the terminal or Notepad. Finish with `END`. Open Notepad again with `EDIT`. |
+| **`pr_tool/metadata/long_description_prompt.py`** | Long-description prompt. The terminal takes plain text of any length, without line breaks. Notepad takes plain text, Markdown, or HTML, and opens with the instructions inside a box divided by blank rows and lines. Lines from that box are not saved. Enter confirms the text, `m` modifies it, and `n` continues plain text in Notepad. |
 | **`pr_tool/metadata/long_description.py`** | Keeps plain long-description text as-is; converts Markdown to HTML; validates Markdown and text HTML (allowed tags, matching tags, safe links; no images/scripts). |
 | **`pr_tool/metadata/video_link.py`** | Accepts a single video URL (YouTube, Vimeo, Dailymotion, Wistia, Loom, or a direct video file). Rejects playlists, collections, channels, regular web pages, and a link that is already in the list. |
 | **`pr_tool/metadata/video_prompt.py`** | Optional videos prompt: title, description, and link. Asks again when the link is already in the list. |
@@ -97,7 +97,7 @@ folder name.
 | Folder / name rules | `project_layouts.py` |
 | Git/Python paths excluded from push | `submission_exclusions.py` |
 | New field *kind* (rare) | `metadata/schema.py`, `engine.py`, `validation.py` |
-| Long description text → HTML | `metadata/long_description.py` (Markdown becomes HTML; the stored value is one line, with straight quotes rewritten) |
+| Long description text → HTML | `metadata/long_description.py` (Markdown becomes HTML; the stored value has no line breaks, and straight quotes are rewritten) |
 | Video link checks | `metadata/video_link.py` |
 | Algorithm from `.improj` | `metadata/improj.py`, `engine.py` |
 | Git / PR flow | `pr_tool.py`, `cli.py` |
