@@ -93,7 +93,7 @@ _NOTEPAD_TOP = _box_edge('┌', '┐')
 _NOTEPAD_BOTTOM = _box_edge('└', '┘')
 _NOTEPAD_HEADER = (
     _NOTEPAD_TOP,
-    _box_line('Enter the long description below this box.'),
+    _box_line('<<< Enter the long description below this box >>>'),
     _box_blank(),
     _box_rule(),
     _box_blank(),
@@ -102,12 +102,19 @@ _NOTEPAD_HEADER = (
     _box_blank(),
     _box_rule(),
     _box_blank(),
+    _box_line('Markdown may contain lists, **bold**, *italic*, [links](url),'),
+    _box_line('and line breaks. It is converted to HTML once saved.'),
+    _box_blank(),
+    _box_rule(),
+    _box_blank(),
     _box_line('HTML may use <p></p>, <br>, <ul></ul>, <ol></ol>, <li></li>,'),
     _box_line('<strong></strong>, <em></em>, <a href="..."></a>.'),
     _box_blank(),
     _box_rule(),
     _box_blank(),
-    _box_line('Lines inside this box are not saved.'),
+    _box_line('Lines inside this box are ignored.'),
+    _box_blank(),
+    _box_line('Save your description and close Notepad to finish.'),
     _NOTEPAD_BOTTOM,
 )
 _NOTEPAD_MARKER = _NOTEPAD_BOTTOM
@@ -116,6 +123,7 @@ _NOTEPAD_MARKER = _NOTEPAD_BOTTOM
 _HEADER_SIGNATURES = (
     'enter the long description below',
     'plain text, markdown, or html are accepted',
+    'is converted to html',
     'headings and images are not accepted',
     'lines inside this box are not saved',
     'lines that belong to this header are not saved',
@@ -313,15 +321,14 @@ def _choose_entry_mode(*, has_current: bool = False) -> str:
     Returns ``keep``, ``terminal``, or ``notepad``. ``keep`` is offered only
     when a saved value is already shown.
     """
-    print(_separator('='))
     if has_current:
         print('  Choose how to update the long description.')
         print('  Enter  keep the current value')
-        print('  1. Replace it with plain text in this terminal')
+        print('  1. Replace it with plain text in this terminal, without line breaks')
         print('  2. Modify it in Notepad')
     else:
-        print('  Where do you want to write the long description?')
-        print('  1. Plain text in this terminal')
+        print('  Choose an option:')
+        print('  1. Plain text in this terminal, without line breaks')
         print('  2. Notepad for plain text, Markdown, or HTML')
     print(_separator('-'))
     prompt = 'Choice (Enter, 1, or 2): ' if has_current else 'Choice (1 or 2): '
@@ -443,24 +450,16 @@ def input_html_text(
             f'{shown}\n'
             f'{bottom_sep}\n'
         )
-    limit_line = f' (max {max_len} characters)' if max_len is not None else ''
+    note = 'use more than one sentence, preferably below 2000 characters'
+    if max_len is not None:
+        limit_line = f' (max {max_len} characters; {note})'
+    else:
+        limit_line = f' ({note})'
     print(
         f'{top_sep}\n'
         f'{name}{limit_line}\n'
         f'{bottom_sep}\n'
-        f'{current_block}'
-        f'  Terminal: plain text of any length, without line breaks.\n'
-        f'  Notepad: plain text, Markdown, or HTML.\n'
-        f'\n'
-        f'  Press Enter to confirm the text, or type m to modify it.\n'
-        f'  After plain text, type n to continue in Notepad.\n'
-        f'\n'
-        f'  Plain text is stored without line breaks.\n'
-        f'  Markdown (lists, **bold**, *italic*, [links](url)) is converted to HTML.\n'
-        f'  Headings and images are not accepted.\n'
-        f'  HTML may use <p></p>, <br>, <ul></ul>, <ol></ol>, <li></li>, '
-        f'<strong></strong>, <em></em>, <a href="..."></a>.\n'
-        f'{bottom_sep}'
+        f'{current_block}'.rstrip('\n')
     )
     mode = _choose_entry_mode(has_current=bool(default))
     if mode == 'keep' and default:
