@@ -59,8 +59,8 @@ GitHub auth, fork sync, branching, push, and opens the PR in your browser.
 | **`pr_tool/metadata/prompts.py`** | Interactive prompts (`input_str`, `input_choice`, `input_choices`, confirmations) including custom-value title-casing. |
 | **`pr_tool/metadata/long_description_prompt.py`** | Long-description prompt. The terminal takes plain text of any length, without line breaks. Notepad takes plain text, Markdown, or HTML, and opens with the instructions inside a box divided by blank rows and lines. Lines from that box are not saved. Enter confirms the text, `m` modifies it, and `n` continues plain text in Notepad. |
 | **`pr_tool/metadata/long_description.py`** | Keeps plain long-description text as-is; converts Markdown to HTML; validates Markdown and text HTML (allowed tags, matching tags, safe links; no images/scripts). |
-| **`pr_tool/metadata/video_link.py`** | Accepts a single video URL (YouTube, Vimeo, Dailymotion, Wistia, Loom, or a direct video file). Rejects playlists, collections, channels, regular web pages, and a link that is already in the list. |
-| **`pr_tool/metadata/video_prompt.py`** | Optional videos prompt: title, description, and link. Asks again when the link is already in the list. |
+| **`pr_tool/metadata/video_link.py`** | Accepts a single video URL (YouTube, Vimeo, Dailymotion, Wistia, Loom, or a direct video file). Rejects playlists, collections, channels, and regular web pages. |
+| **`pr_tool/metadata/video_prompt.py`** | Optional video prompt for one video: title, description, and link. Press Enter to leave the field empty, or type `1` to add a video. A saved video is kept with Enter, and `1` modifies it. Three attempts on the link, empty or rejected, return to the Videos prompt. An empty `videos` value is left out of `metadata.json`. |
 | **`pr_tool/metadata/format.py`** | Pretty-prints `metadata.json` with keys in schema order. |
 | **`pr_tool/metadata/image_field.py`** | Interactive and CLI-driven project image selection (`--image`, `--tag`, or pick from catalog). |
 
@@ -126,7 +126,7 @@ Edit `metadata/schemas.py`. Fields are `FieldSpec(key, label, kind, …)`; **tup
 | `url` | Single URL |
 | `image` / `image_mirror` | Thumbnail; mirror sets `main_image_id` |
 | `brand` | Sets `brand_image_id` + `brand_url` |
-| `videos` | Optional list of `{title, description, link}` (single video URL; no playlists or regular pages). Stored after `brand_url` and before `links`. |
+| `videos` | Optional list of one `{title, description, link}` (single video URL; no playlists or regular pages). Press Enter on the title to leave it empty; an empty value is omitted from `metadata.json`. Stored after `brand_url` and before `links`. |
 | `accelerator_links`, `model_zoo_psoc_links`, `model_zoo_aurix_links` | Auto link arrays |
 | `metrics` | Optional labelled metrics (model-zoo) |
 

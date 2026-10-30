@@ -41,7 +41,7 @@ from metadata.prompts import (
     input_str,
 )
 from metadata.schema import FieldSpec, MetadataSchema
-from metadata.video_prompt import collect_videos
+from metadata.video_prompt import collect_videos, videos_are_empty
 
 def _order_metadata(metadata: dict, schema: MetadataSchema) -> dict:
     """Return metadata with keys in schema field order."""
@@ -400,7 +400,7 @@ def _collect_field(
     if field.kind == 'model_zoo_aurix_links':
         return model_zoo_aurix_links(project_name)
     if field.kind == 'videos':
-        return collect_videos(previous, review=review_pass)
+        return collect_videos(previous)
     if field.kind == 'metrics':
         return _collect_metrics(previous)
     raise ValueError(f'Unknown field kind: {field.kind!r}')
@@ -423,6 +423,8 @@ def finalize_metadata(metadata: dict, schema: MetadataSchema) -> dict:
     result = dict(metadata)
     _apply_derived_fields(result, metadata)
     _join_choice_fields(result, schema)
+    if 'videos' in result and videos_are_empty(result.get('videos')):
+        result.pop('videos', None)
     return _order_metadata(result, schema)
 
 

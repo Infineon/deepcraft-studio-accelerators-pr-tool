@@ -89,15 +89,10 @@ def validate_loaded_metadata(
     project_name: str | None = None,
     project_path: Path | None = None,
 ) -> dict:
-    """Validate loaded metadata and offer optional videos when they have not been set."""
+    """Validate loaded metadata. Optional videos stay unset until metadata is modified."""
     from metadata import confirm_metadata
 
     current = _repair_image_mirror(dict(metadata))
-    optional_to_offer = {
-        spec.key
-        for spec in schema.fields
-        if not spec.required and spec.kind == 'videos' and current.get(spec.key) is None
-    }
     while True:
         result = validate_metadata(current, schema, project_name, project_path)
         if result.missing or result.other:
@@ -147,11 +142,6 @@ def validate_loaded_metadata(
                 current = collect_missing(current, result.choice_fields)
                 current = _repair_image_mirror(current)
                 continue
-        if optional_to_offer:
-            current = collect_missing(current, optional_to_offer)
-            current = _repair_image_mirror(current)
-            optional_to_offer.clear()
-            continue
         return finalize_metadata(current, schema)
 
 
@@ -412,43 +402,27 @@ def _repair_github_link_url(link: dict, project_name: str | None) -> None:
 
 
 def _validate_videos(metadata: dict, spec: FieldSpec, result: MetadataValidationResult) -> None:
-    from metadata.video_link import duplicate_video_link_error, video_link_error
-    from metadata.video_prompt import normalize_video_text
+    from metadata.video_link import video_link_error
+    from metadata.video_prompt import _normalize_videos
 
     videos = metadata.get('videos')
     if videos is None:
         if spec.required:
             _mark_missing(result, spec, 'Missing required field: videos')
         return
-    if not isinstance(videos, list) or not videos:
-        _mark_other(result, spec, 'videos must be a non-empty list when present')
+    normalized = _normalize_videos(videos)
+    if normalized is None:
+        metadata.pop('videos', None)
+        if spec.required:
+            _mark_missing(result, spec, 'Missing required field: videos')
         return
-    for index, entry in enumerate(videos, start=1):
-        if not isinstance(entry, dict):
-            _mark_other(result, spec, f'videos[{index}] must be an object')
-            return
-        for key in ('title', 'description', 'link'):
-            value = entry.get(key)
-            if not isinstance(value, str) or not value.strip():
-                _mark_missing(result, spec, f'videos[{index}] missing or empty {key!r}')
-                return
-        entry['title'] = normalize_video_text(entry['title'])
-        entry['description'] = normalize_video_text(entry['description'])
-        if not entry['title'] or not entry['description']:
-            _mark_missing(result, spec, f'videos[{index}] title and description cannot be empty')
-            return
-        error = video_link_error(entry['link'])
-        if error:
-            _mark_other(result, spec, f'videos[{index}] link: {error}')
-            continue
-        taken = [
-            earlier['link']
-            for earlier in videos[:index - 1]
-            if isinstance(earlier, dict) and isinstance(earlier.get('link'), str)
-        ]
-        duplicate = duplicate_video_link_error(entry['link'], taken)
-        if duplicate:
-            _mark_other(result, spec, f'videos[{index}] link: {duplicate}')
+    if len(normalized) > 1:
+        _mark_other(result, spec, 'videos can contain only one video')
+        return
+    metadata['videos'] = normalized
+    error = video_link_error(normalized[0]['link'])
+    if error:
+        _mark_other(result, spec, f'videos[1] link: {error}')
 
 
 def _validate_metrics(metadata: dict, spec: FieldSpec, result: MetadataValidationResult) -> None:
