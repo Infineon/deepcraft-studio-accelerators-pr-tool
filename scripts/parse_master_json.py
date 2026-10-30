@@ -1,4 +1,9 @@
-"""Parse deepcraft.infineon.com/master.json for metadata filter values."""
+"""Parse deepcraft.infineon.com/master.json for metadata filter values.
+
+AURIX model-zoo kit and device lists are maintained in ``metadata/choices.py``
+(``AURIX_KIT`` / ``AURIX_DEVICE``) from published model-zoo-for-aurix metadata,
+not from this AI Hub catalog.
+"""
 import json
 import pathlib
 import sys
