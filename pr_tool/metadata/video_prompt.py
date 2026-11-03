@@ -72,27 +72,35 @@ def _warn(message: str) -> None:
     print(f'{constants.ICON_WARNING} {message}')
 
 
-def _collect_text(name: str, default: str | None) -> str:
+def _collect_text(name: str, default: str | None, max_len: int) -> str:
     lines = [f'>>> Press Enter to keep: {default}'] if default else []
+    label = f'{name} (max {max_len} characters)'
     while True:
-        raw = _read_prompt(name, lines)
-        if not raw and default:
+        raw = _read_prompt(label, lines)
+        if not raw and default and len(default) <= max_len:
             return default
         value = normalize_video_text(raw)
-        if value:
-            return value
-        _warn('Value cannot be empty, please try again.')
+        if not value:
+            _warn('Value cannot be empty, please try again.')
+            continue
+        if len(value) > max_len:
+            _warn(f'Value is more than {max_len} characters, please try again.')
+            continue
+        return value
 
 
 _LINK_TRIES = 3
+VIDEO_TITLE_MAX_LENGTH = 40
+VIDEO_DESCRIPTION_MAX_LENGTH = 300
+_VIDEO_RULES = (
+    '  Use a single video URL (YouTube, Vimeo, Dailymotion, Wistia, Loom, etc.).',
+    '  Video playlists and regular web pages are not allowed.',
+)
 
 
 def _link_lines(default: str | None, attempts: int) -> list[str]:
-    lines = [
-        '  Single video URL only (for example https://youtu.be/...).',
-        '  Playlists and regular web pages are not allowed.',
-        f'  Attempts: {attempts} of {_LINK_TRIES}',
-    ]
+    lines = [*_VIDEO_RULES] if default else []
+    lines.append(f'  Attempts: {attempts} of {_LINK_TRIES}')
     if default:
         lines.append(f'>>> Press Enter to keep: {default}')
     return lines
@@ -126,35 +134,72 @@ def _collect_video_link(default: str | None = None) -> str | None:
         _warn(f'{error} ({attempts} of {_LINK_TRIES})')
 
 
-def _saved_video_lines(video: dict) -> list[str]:
-    return [
-        '>>> Press Enter to keep:',
-        f'  Title: {video["title"]}',
-        f'  Description: {video["description"]}',
-        f'  Link: {video["link"]}',
-    ]
+def _choice(key: str, text: str) -> str:
+    """One menu row. Numbers use the same ``1.`` form as the other prompts."""
+    label = 'Enter' if key == 'Enter' else f'{key}.'
+    return f'  {label}'.ljust(12) + text
+
+
+def _show_video_menu(details: list[str], options: list[str]) -> None:
+    """Print the Videos block in the same frame as the long-description menu."""
+    rule = _separator('-')
+    print(_separator('='))
+    print('Videos')
+    print(rule)
+    for line in details:
+        print(line)
+    print(rule)
+    print('  Choose an option:')
+    for option in options:
+        print(option)
+    print(rule)
+
+
+def _saved_video_is_too_long(video: dict) -> str | None:
+    if len(video['title']) > VIDEO_TITLE_MAX_LENGTH:
+        return (
+            f'Video title is more than {VIDEO_TITLE_MAX_LENGTH} characters. '
+            'Type 1 to modify it.'
+        )
+    if len(video['description']) > VIDEO_DESCRIPTION_MAX_LENGTH:
+        return (
+            f'Video description is more than {VIDEO_DESCRIPTION_MAX_LENGTH} characters. '
+            'Type 1 to modify it.'
+        )
+    return None
 
 
 def _choose_video(current: dict | None, *, several: bool) -> str:
     """Return ``keep``, ``add``, or ``remove``."""
     if current:
-        lines = [
-            'Videos - press Enter to keep this video, type 1 to modify it, or type 2 to remove it',
-            *_saved_video_lines(current),
-            '  1. Modify the video',
-            '  2. Remove the video',
+        details = [
+            f'  Title: {current["title"]}',
+            f'  Description: {current["description"]}',
+            f'  Link: {current["link"]}',
         ]
+        options = [
+            _choice('Enter', 'Keep this video'),
+            _choice('1', 'Modify the video'),
+            _choice('2', 'Remove the video'),
+        ]
+        prompt = 'Choice (Enter, 1, or 2): '
         retry = 'Press Enter to keep it, type 1 to modify it, or type 2 to remove it.'
     else:
-        note = 'Only one video can be saved. ' if several else ''
-        lines = [
-            f'Videos - {note}press Enter to leave this field empty, or type 1 to add a video',
-            '  1. Add a video',
+        details = ['  Only one video can be saved.'] if several else []
+        details.extend(_VIDEO_RULES)
+        options = [
+            _choice('Enter', 'Leave this field empty'),
+            _choice('1', 'Add a video'),
         ]
+        prompt = 'Choice (Enter or 1): '
         retry = 'Press Enter to leave this field empty, or type 1 to add a video.'
     while True:
-        raw = _read_prompt(lines[0], lines[1:])
+        _show_video_menu(details, options)
+        raw = input(prompt).strip()
         if not raw:
+            if current and (error := _saved_video_is_too_long(current)):
+                _warn(error)
+                continue
             return 'keep' if current else 'remove'
         if raw == '1':
             return 'add'
@@ -167,7 +212,7 @@ def collect_videos(previous: dict) -> list[dict] | None:
     """Ask for one optional video, using the same prompt layout as other fields.
 
     Enter leaves the field empty when no video is saved, and keeps a saved video.
-    ``1`` adds or modifies that video. ``2`` removes a saved video.
+    ``1`` adds or modifies a video, and ``2`` removes a saved video.
     Three attempts on the video link, empty or rejected, return to this prompt.
     ``None`` means ``videos`` is left out of ``metadata.json``.
     """
@@ -179,8 +224,16 @@ def collect_videos(previous: dict) -> list[dict] | None:
             return [current] if current else None
         if choice == 'remove':
             return None
-        title = _collect_text('Video title', current['title'] if current else None)
-        description = _collect_text('Video description', current['description'] if current else None)
+        title = _collect_text(
+            'Video title',
+            current['title'] if current else None,
+            VIDEO_TITLE_MAX_LENGTH,
+        )
+        description = _collect_text(
+            'Video description',
+            current['description'] if current else None,
+            VIDEO_DESCRIPTION_MAX_LENGTH,
+        )
         link = _collect_video_link(current['link'] if current else None)
         if link is None:
             continue

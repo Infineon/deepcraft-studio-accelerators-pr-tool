@@ -69,65 +69,39 @@ def _wait_for_editor(process: subprocess.Popen) -> None:
             continue
 
 
-_BOX_WIDTH = 78
 _BOX_CHARS = set('┌┐└┘├┤│─ ')
-
-
-def _box_edge(left: str, right: str) -> str:
-    return left + '─' * (_BOX_WIDTH - 2) + right
-
-
-def _box_line(text: str) -> str:
-    return f'│ {text.ljust(_BOX_WIDTH - 4)} │'
-
-
-def _box_blank() -> str:
-    return _box_line('')
-
-
-def _box_rule() -> str:
-    return _box_edge('├', '┤')
-
-
-_NOTEPAD_TOP = _box_edge('┌', '┐')
-_NOTEPAD_BOTTOM = _box_edge('└', '┘')
+_RULE = '----'
+_NOTEPAD_MARKER = '[ LONG DESCRIPTION ] - Write it below'
 _NOTEPAD_HEADER = (
-    _NOTEPAD_TOP,
-    _box_line('<<< Enter the long description below this box >>>'),
-    _box_blank(),
-    _box_rule(),
-    _box_blank(),
-    _box_line('Plain text, Markdown, or HTML are accepted.'),
-    _box_line('Headings and images are not accepted.'),
-    _box_blank(),
-    _box_rule(),
-    _box_blank(),
-    _box_line('Markdown may contain lists, **bold**, *italic*, [links](url),'),
-    _box_line('and line breaks. It is converted to HTML once saved.'),
-    _box_blank(),
-    _box_rule(),
-    _box_blank(),
-    _box_line('HTML may use <p></p>, <br>, <ul></ul>, <ol></ol>, <li></li>,'),
-    _box_line('<strong></strong>, <em></em>, <a href="..."></a>.'),
-    _box_blank(),
-    _box_rule(),
-    _box_blank(),
-    _box_line('Lines inside this box are ignored.'),
-    _box_blank(),
-    _box_line('Save your description and close Notepad to finish.'),
-    _NOTEPAD_BOTTOM,
+    '[ INSTRUCTIONS ]',
+    _RULE,
+    'Plain text, Markdown, or HTML are accepted.',
+    'Headings and images are not accepted.',
+    _RULE,
+    'Markdown may contain lists, **bold**, *italic*, [links](url),',
+    'and line breaks. It is converted to HTML once saved.',
+    _RULE,
+    'HTML may use <p></p>, <br>, <ul></ul>, <ol></ol>, <li></li>,',
+    '<strong></strong>, <em></em>, <a href="..."></a>.',
+    '======',
+    _NOTEPAD_MARKER,
 )
-_NOTEPAD_MARKER = _NOTEPAD_BOTTOM
 
 
 _HEADER_SIGNATURES = (
     'enter the long description below',
+    'write the long description beside the colon',
+    'write the long description after the colon',
+    'write it below',
     'plain text, markdown, or html are accepted',
+    'markdown may contain lists',
     'is converted to html',
     'headings and images are not accepted',
     'lines inside this box are not saved',
+    'lines inside this box are ignored',
     'lines that belong to this header are not saved',
     'the lines above the marker are not saved',
+    'the lines above are not saved',
     'html may use <p></p>',
     '<strong></strong>, <em></em>, <a href=',
 )
@@ -141,19 +115,29 @@ def _is_box_border(line: str) -> bool:
 def _is_header_instruction(line: str) -> bool:
     """True for an instruction line, a box border, or a leftover piece of either."""
     stripped = line.strip()
-    if _is_box_border(stripped) or stripped[:1] in '┌┐└┘├┤│':
+    if (
+        stripped == _RULE
+        or (stripped and set(stripped) == {'='})
+        or _is_box_border(stripped)
+        or stripped[:1] in '┌┐└┘├┤│'
+    ):
         return True
     folded = stripped.strip('│').strip().lower()
+    if folded in {'instructions', '[ instructions ]', 'long description'}:
+        return True
+    if folded.startswith('[ long description ]'):
+        return True
     if folded.startswith('-----') and ('below' in folded or 'do not delete' in folded):
         return True
     return any(signature in folded for signature in _HEADER_SIGNATURES)
 
 
 def _strip_notepad_header(body: str) -> str:
-    """Keep the user's text and drop the instruction box, even when part of it is deleted."""
+    """Keep the user's text and drop the instruction note, even when part of it is deleted."""
     lines = body.split('\n')
     for index, line in enumerate(lines):
-        if line.strip() == _NOTEPAD_BOTTOM:
+        stripped = line.strip()
+        if stripped == _NOTEPAD_MARKER or stripped.lower().startswith('[ long description ]'):
             return '\n'.join(lines[index + 1:])
     kept = [line for line in lines if not _is_header_instruction(line)]
     while kept and not kept[0].strip():
@@ -186,8 +170,8 @@ def _open_notepad(lines: list[str]) -> list[str] | None:
     try:
         handle.write('\n'.join(_NOTEPAD_HEADER))
         handle.write('\n')
-        handle.write('\n'.join(lines))
         if lines:
+            handle.write('\n'.join(lines))
             handle.write('\n')
         handle.close()
         command = shlex.split(editor, posix=(os.name != 'nt'))
@@ -315,6 +299,12 @@ def _load_from_editor(lines: list[str]) -> list[str] | None:
     return edited
 
 
+def _choice(key: str, text: str) -> str:
+    """One menu row. Numbers use the same ``1.`` form as the other prompts."""
+    label = 'Enter' if key == 'Enter' else f'{key}.'
+    return f'  {label}'.ljust(12) + text
+
+
 def _choose_entry_mode(*, has_current: bool = False) -> str:
     """Ask whether the text is kept, typed here, or opened in Notepad.
 
@@ -322,16 +312,16 @@ def _choose_entry_mode(*, has_current: bool = False) -> str:
     when a saved value is already shown.
     """
     if has_current:
-        print('  Choose how to update the long description.')
-        print('  Enter  keep the current value')
-        print('  1. Replace it with plain text in this terminal, without line breaks')
-        print('  2. Modify it in Notepad')
+        print('  Choose an option:')
+        print(_choice('Enter', 'Keep the current value'))
+        print(_choice('1', 'Replace it with plain text in this terminal, without line breaks'))
+        print(_choice('2', 'Modify it in Notepad'))
     else:
         print('  Choose an option:')
-        print('  1. Plain text in this terminal, without line breaks')
-        print('  2. Notepad for plain text, Markdown, or HTML')
+        print(_choice('1', 'Plain text in this terminal, without line breaks'))
+        print(_choice('2', 'Notepad for plain text, Markdown, or HTML'))
     print(_separator('-'))
-    prompt = 'Choice (Enter, 1, or 2): ' if has_current else 'Choice (1 or 2): '
+    prompt = ': '
     retry = (
         'Press Enter to keep it, or type 1 for the terminal or 2 for Notepad. Please try again.'
         if has_current
@@ -341,12 +331,12 @@ def _choose_entry_mode(*, has_current: bool = False) -> str:
         answer = _read_line(prompt)
         if answer is None:
             raise EOFError
-        answer = answer.strip().lower()
+        answer = answer.strip()
         if has_current and answer == '':
             return 'keep'
-        if answer in ('1', 'terminal'):
+        if answer == '1':
             return 'terminal'
-        if answer in ('2', 'notepad'):
+        if answer == '2':
             return 'notepad'
         _print_between_separators(retry)
 
@@ -364,8 +354,8 @@ def _kept_value(default: str) -> str | None:
 
 def _read_plain_line(seed: str) -> str | None:
     """Read one line of plain text. ``None`` means end of input."""
-    print(_separator('-'))
     print('  Plain text of any length. Markdown and HTML are not accepted here.')
+    print(_separator('-'))
     if not seed:
         return _read_line(': ')
     line, prefilled = _read_prefilled(': ', seed)
@@ -387,30 +377,28 @@ def _confirm_or_modify(lines: list[str], mode: str) -> str:
         print(f'{constants.ICON_SUCCESS} Loaded {len(lines)} line(s) from Notepad:')
         _show_long_text_lines(lines)
         print(_separator('-'))
-    print('  Enter  confirm this text')
+    print(_choice('Enter', 'Confirm this text'))
     if mode == 'terminal':
-        print('  m      modify it in this terminal')
-        print('  n      continue in Notepad')
-        prompt = 'Choice (Enter, m, or n): '
+        print(_choice('1', 'Modify it in this terminal'))
+        print(_choice('2', 'Continue in Notepad'))
         retry = (
-            'Press Enter to confirm, type m to modify, '
-            'or type n to continue in Notepad. Please try again.'
+            'Press Enter to confirm, type 1 to modify in this terminal, '
+            'or type 2 to continue in Notepad. Please try again.'
         )
     else:
-        print('  m      modify it in Notepad')
-        prompt = 'Choice (Enter or m): '
-        retry = 'Press Enter to confirm, or type m to modify. Please try again.'
+        print(_choice('1', 'Modify it in Notepad'))
+        retry = 'Press Enter to confirm, or type 1 to modify in Notepad. Please try again.'
     print(_separator('-'))
     while True:
-        answer = _read_line(prompt)
+        answer = _read_line(': ')
         if answer is None:
             raise EOFError
-        answer = answer.strip().lower()
+        answer = answer.strip()
         if answer == '':
             return 'confirm'
-        if answer in ('m', 'modify'):
+        if answer == '1':
             return 'modify'
-        if mode == 'terminal' and answer in ('n', 'notepad'):
+        if mode == 'terminal' and answer == '2':
             return 'notepad'
         _print_between_separators(retry)
 
@@ -436,9 +424,9 @@ def input_html_text(
     """Collect a long description.
 
     The terminal accepts plain text of any length, without line breaks.
-    Notepad accepts plain text, Markdown, or HTML. Enter confirms the text,
-    and ``m`` opens it again. After plain text, ``n`` continues that text in
-    Notepad. Markdown from Notepad is stored as HTML.
+    Notepad accepts plain text, Markdown, or HTML. Enter confirms the text.
+    ``1`` changes it in the terminal, and ``2`` opens Notepad. Markdown from
+    Notepad is stored as HTML.
     """
     top_sep = _separator('=')
     bottom_sep = _separator('-')

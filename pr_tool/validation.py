@@ -403,7 +403,11 @@ def _repair_github_link_url(link: dict, project_name: str | None) -> None:
 
 def _validate_videos(metadata: dict, spec: FieldSpec, result: MetadataValidationResult) -> None:
     from metadata.video_link import video_link_error
-    from metadata.video_prompt import _normalize_videos
+    from metadata.video_prompt import (
+        VIDEO_DESCRIPTION_MAX_LENGTH,
+        VIDEO_TITLE_MAX_LENGTH,
+        _normalize_videos,
+    )
 
     videos = metadata.get('videos')
     if videos is None:
@@ -420,7 +424,20 @@ def _validate_videos(metadata: dict, spec: FieldSpec, result: MetadataValidation
         _mark_other(result, spec, 'videos can contain only one video')
         return
     metadata['videos'] = normalized
-    error = video_link_error(normalized[0]['link'])
+    video = normalized[0]
+    if len(video['title']) > VIDEO_TITLE_MAX_LENGTH:
+        _mark_other(
+            result, spec,
+            f'videos title exceeds max length of {VIDEO_TITLE_MAX_LENGTH} characters',
+        )
+        return
+    if len(video['description']) > VIDEO_DESCRIPTION_MAX_LENGTH:
+        _mark_other(
+            result, spec,
+            f'videos description exceeds max length of {VIDEO_DESCRIPTION_MAX_LENGTH} characters',
+        )
+        return
+    error = video_link_error(video['link'])
     if error:
         _mark_other(result, spec, f'videos[1] link: {error}')
 
