@@ -94,6 +94,7 @@ VIDEO_TITLE_MAX_LENGTH = 40
 VIDEO_DESCRIPTION_MAX_LENGTH = 300
 _VIDEO_RULES = (
     '  Use a single video URL (YouTube, Vimeo, Dailymotion, Wistia, Loom, etc.).',
+    '  Links with a start time are allowed, such as https://youtu.be/...?t=42.',
     '  Video playlists and regular web pages are not allowed.',
 )
 
