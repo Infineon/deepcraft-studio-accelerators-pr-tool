@@ -19,6 +19,8 @@ FieldKind = Literal[
     'brand',
     'accelerator_links',
     'model_zoo_psoc_links',
+    'model_zoo_aurix_links',
+    'videos',
     'metrics',
 ]
 
@@ -36,6 +38,7 @@ class FieldSpec:
     cli_choices: tuple[str, ...] | None = None
     cli_action: str | None = None
     allow_custom: bool = True
+    join_values: bool = False
 
     def register_cli(self, group: _ArgumentGroup) -> None:
         from metadata.prompts import register_cli_text

@@ -16,6 +16,8 @@ TOOL_REPO = 'Infineon/deepcraft-studio-accelerators-pr-tool'
 
 # Use in terminal output (print). README files use HTML ``&trade;`` instead.
 DEEPCRAFT = 'DEEPCRAFT\u2122'
+PSOC = 'PSOC\u2122'
+AURIX = 'AURIX\u2122'
 
 # ── Target Repositories ─────────────────────────────────────────
 from target_repo import TargetRepo
@@ -32,10 +34,19 @@ TARGET_REPOS: dict[str, TargetRepo] = {
     'model-zoo-psoc': TargetRepo(
         key='model-zoo-psoc',
         repo_name='deepcraft-model-zoo-for-psoc',
-        label=f'{DEEPCRAFT} Model Zoo for PSOC',
+        label=f'{DEEPCRAFT} Model Zoo for {PSOC}',
         pr_title_template='Model Zoo PSOC {project_name}',
         project_layout='model_zoo_psoc_layout',
         git_ignored_dirs=(),
+    ),
+    'model-zoo-aurix': TargetRepo(
+        key='model-zoo-aurix',
+        repo_name='deepcraft-model-zoo-for-aurix',
+        label=f'{DEEPCRAFT} Model Zoo for {AURIX}',
+        pr_title_template=f'Model Zoo {AURIX} {{project_name}}',
+        project_layout='metadata_only_layout',
+        git_ignored_dirs=(),
+        metadata_only=True,
     ),
 }
 

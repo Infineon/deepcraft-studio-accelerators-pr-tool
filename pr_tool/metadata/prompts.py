@@ -105,7 +105,12 @@ def confirm_metadata() -> str:
         print(f"{constants.ICON_WARNING} Please answer 'y', 'n', or 'a'.")
 
 
-def confirm_new_value(value: str, kind: str) -> bool:
+def confirm_new_value(value: str, kind: str, *, only_if_necessary: bool = False) -> bool:
+    if only_if_necessary:
+        return confirm(
+            f'"{value}" is not in the {kind} list. '
+            f'Add it only if none of the listed options fits. Use it anyway?',
+        )
     return confirm(f'"{value}" is not in the suggested {kind} list. Use it anyway?')
 
 
@@ -238,6 +243,7 @@ def input_choices(
     default: list[str] | None = None,
     *,
     allow_custom: bool = True,
+    prefer_listed: bool = False,
 ) -> list[str]:
     choices_sub_list = _format_choices(choices)
     range_str = f'between 1 and {len(choices)}'
@@ -245,21 +251,31 @@ def input_choices(
     bottom_sep = _separator('-')
     default_line = (f'>>> Press Enter to keep: {", ".join(default)}\n'
                     if default else '')
-    hint = (
-        f'type one or more numbers {range_str} and/or names, comma-separated'
-        if allow_custom
-        else f'type one or more numbers {range_str} and/or listed names, comma-separated'
-    )
+    if prefer_listed:
+        hint = (
+            f'select from the list (numbers {range_str} or listed names, comma-separated). '
+            f'Enter a new value only if none of the listed options fits'
+        )
+    elif allow_custom:
+        hint = f'type one or more numbers {range_str} and/or names, comma-separated'
+    else:
+        hint = f'type one or more numbers {range_str} and/or listed names, comma-separated'
     header = (
         f'{top_sep}\n'
         f'{name}(s) - {hint}\n{default_line}{choices_sub_list}\n'
         f'{bottom_sep}'
     )
     print(header)
-    retry_hint = (
-        f'{name}(s) - comma-separated numbers {range_str}'
-        + (' and/or names' if allow_custom else ' and/or listed names')
-    )
+    if prefer_listed:
+        retry_hint = (
+            f'{name}(s) - select from the list '
+            f'(comma-separated numbers {range_str} or listed names)'
+        )
+    else:
+        retry_hint = (
+            f'{name}(s) - comma-separated numbers {range_str}'
+            + (' and/or names' if allow_custom else ' and/or listed names')
+        )
     while True:
         raw = input(f'{retry_hint}\n: ').strip()
         if not raw and default:
@@ -289,7 +305,9 @@ def input_choices(
                     results.append(resolved)
                 elif allow_custom:
                     formatted = format_custom_choice_value(token)
-                    if confirm_new_value(formatted, name.lower()):
+                    if confirm_new_value(
+                        formatted, name.lower(), only_if_necessary=prefer_listed,
+                    ):
                         results.append(formatted)
                     else:
                         retry = True
