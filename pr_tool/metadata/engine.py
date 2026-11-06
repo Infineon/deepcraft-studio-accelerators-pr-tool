@@ -43,6 +43,10 @@ from metadata.prompts import (
 from metadata.schema import FieldSpec, MetadataSchema
 from metadata.video_prompt import collect_videos, videos_are_empty
 
+# Fields that must come from the listed options; a new value is kept only after confirmation.
+LISTED_ONLY_FIELD_KEYS = ('sensors', 'domain', 'use_case')
+
+
 def _order_metadata(metadata: dict, schema: MetadataSchema) -> dict:
     """Return metadata with keys in schema field order."""
     ordered: dict = {}
@@ -128,8 +132,6 @@ def _collect_device(
     if derived is not None and not review_pass:
         print(f'\nDevice(s) derived from kit: {", ".join(derived)}')
         return derived
-    if review_pass:
-        print('\n(Press Enter to keep the default; or pick other device(s) from the list.)')
     return input_choices(
         field.label,
         list(field.choices),
@@ -160,7 +162,6 @@ def _collect_algorithm(
         return derived
     default = previous.get(field.key) if isinstance(previous.get(field.key), str) else derived
     print(f'\nDefault from {project_name}.improj ProjectType: {derived}')
-    print('(Press Enter to keep the default, or pick another algorithm.)')
     return input_choice(
         field.label,
         list(field.choices),
@@ -364,13 +365,12 @@ def _collect_field(
                 return auto_value
             default = prev_value if isinstance(prev_value, list) and prev_value else auto_value
             print(f'\nVision ProjectType default: {", ".join(auto_value)}')
-            print('(Press Enter to keep the default, or pick other value(s) from the list.)')
             return input_choices(
                 field.label,
                 list(field.choices),
                 default=default,
                 allow_custom=field.allow_custom,
-                prefer_listed=field.key in ('sensors', 'domain'),
+                prefer_listed=field.key in LISTED_ONLY_FIELD_KEYS,
             )
         if field.key == 'type':
             default = normalize_project_types(prev_value) or None
@@ -386,7 +386,7 @@ def _collect_field(
                 list(field.choices),
                 default=default,
                 allow_custom=field.allow_custom,
-                prefer_listed=field.key in ('sensors', 'domain'),
+                prefer_listed=field.key in LISTED_ONLY_FIELD_KEYS,
             )
         if field.join_values:
             return [', '.join(chosen)]

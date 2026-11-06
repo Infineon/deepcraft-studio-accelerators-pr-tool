@@ -30,11 +30,13 @@ from constants import (
     ICON_WARNING,
     DEEPCRAFT,
     MAIN_BRANCH,
+    TARGET_HIGHLIGHT_WORDS,
     TARGET_REPOS,
 )
 from input import Input, confirm
 from updater import ensure_latest_version
 from metadata import confirm_metadata, finalize_metadata, format_metadata_json, get_metadata_schema
+from metadata.prompts import colour_key_line, paint_magenta, paint_words
 from submission_exclusions import (
     build_submission_exclude_pathspecs,
     filter_submission_paths,
@@ -613,7 +615,7 @@ try:
 
     # Initial summary
     print_header('Project Summary', icon=ICON_INFO)
-    print(f'  Target        : {target_repo.label} ({args.repo_key})')
+    print(f'  Target        : {paint_words(target_repo.label, TARGET_HIGHLIGHT_WORDS)} ({args.repo_key})')
     print(f'  Repository    : {target_repo.base_repo}')
     print(f'  Project path  : {project_path}')
     print(f'  Project name  : {project_name}')
@@ -648,6 +650,7 @@ try:
     # Metadata review / collection (after summary so the user can abort first)
     metadata_schema = get_metadata_schema(args.repo_key)
     print_header('Metadata Collection', icon=ICON_INFO)
+    print(colour_key_line())
     if args.override_metadata or not metadata_path.exists():
         metadata = args.collect_metadata()
     else:
@@ -669,8 +672,8 @@ try:
 
     while metadata:
         metadata = finalize_metadata(metadata, metadata_schema)
-        print('\nProject metadata.json overview:')
-        print(format_metadata_json(metadata).rstrip('\n'))
+        print(f'\nProject {paint_magenta("metadata.json")} overview:')
+        print(format_metadata_json(metadata, colour=True).rstrip('\n'))
         answer = confirm_metadata()
         if answer == 'yes':
             metadata_path.write_text(

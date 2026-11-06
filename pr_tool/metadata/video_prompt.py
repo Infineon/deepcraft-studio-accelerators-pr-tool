@@ -5,7 +5,16 @@ import unicodedata
 from typing import Any
 
 import constants
-from metadata.prompts import _separator
+from metadata.prompts import (
+    MODIFY_KEY,
+    NEW_VALUE_KEY,
+    _field_separator,
+    _menu_choice,
+    _separator,
+    field_name,
+    input_prefilled,
+    paint_yellow,
+)
 from metadata.video_link import video_link_error
 
 
@@ -69,15 +78,38 @@ def _read_prompt(name: str, lines: list[str]) -> str:
 
 
 def _warn(message: str) -> None:
-    print(f'{constants.ICON_WARNING} {message}')
+    print(paint_yellow(f'{constants.ICON_WARNING} {message}'))
+
+
+def _keep_lines(default: str) -> list[str]:
+    """Enter row for a saved video field, in the same list as the other menus."""
+    return [
+        _separator('-'),
+        f'  {constants.ICON_WARNING} {paint_yellow("Current value:")} {default}',
+        _separator('-'),
+        '  Choose an option:',
+        _menu_choice('Enter', 'Keep the current value'),
+        _menu_choice(MODIFY_KEY, 'Modify the current value'),
+        _menu_choice(NEW_VALUE_KEY, 'Type a new value'),
+    ]
 
 
 def _collect_text(name: str, default: str | None, max_len: int) -> str:
-    lines = [f'>>> Press Enter to keep: {default}'] if default else []
-    label = f'{name} (max {max_len} characters)'
+    lines = _keep_lines(default) if default else []
+    label = f'{field_name(name)} (max {max_len} characters)'
     while True:
         raw = _read_prompt(label, lines)
-        if not raw and default and len(default) <= max_len:
+        if default and raw == MODIFY_KEY:
+            raw = input_prefilled(': ', default, read=input).strip()
+        elif default and raw == NEW_VALUE_KEY:
+            raw = input(': ').strip()
+        elif default and raw:
+            _warn(
+                'Press Enter to keep it, type 1 to modify it, '
+                'or type 2 to type a new value. Please try again.'
+            )
+            continue
+        elif not raw and default and len(default) <= max_len:
             return default
         value = normalize_video_text(raw)
         if not value:
@@ -103,7 +135,7 @@ def _link_lines(default: str | None, attempts: int) -> list[str]:
     lines = [*_VIDEO_RULES] if default else []
     lines.append(f'  Attempts: {attempts} of {_LINK_TRIES}')
     if default:
-        lines.append(f'>>> Press Enter to keep: {default}')
+        lines.extend(_keep_lines(default))
     return lines
 
 
@@ -115,8 +147,18 @@ def _collect_video_link(default: str | None = None) -> str | None:
     """
     attempts = 0
     while True:
-        raw = _read_prompt('Video link', _link_lines(default, attempts))
-        if not raw and default:
+        raw = _read_prompt(field_name('Video link'), _link_lines(default, attempts))
+        if default and raw == MODIFY_KEY:
+            link = input_prefilled(': ', default, read=input).strip()
+        elif default and raw == NEW_VALUE_KEY:
+            link = input(': ').strip()
+        elif default and raw:
+            _warn(
+                'Press Enter to keep it, type 1 to modify it, '
+                'or type 2 to type a new value. Please try again.'
+            )
+            continue
+        elif not raw and default:
             link = default
         elif not raw:
             link = ''
@@ -137,15 +179,14 @@ def _collect_video_link(default: str | None = None) -> str | None:
 
 def _choice(key: str, text: str) -> str:
     """One menu row. Numbers use the same ``1.`` form as the other prompts."""
-    label = 'Enter' if key == 'Enter' else f'{key}.'
-    return f'  {label}'.ljust(12) + text
+    return _menu_choice(key, text)
 
 
 def _show_video_menu(details: list[str], options: list[str]) -> None:
     """Print the Videos block in the same frame as the long-description menu."""
     rule = _separator('-')
-    print(_separator('='))
-    print('Videos')
+    print(_field_separator())
+    print(field_name('Videos'))
     print(rule)
     for line in details:
         print(line)

@@ -3,7 +3,6 @@
 import os
 import shlex
 import subprocess
-import sys
 import tempfile
 from pathlib import Path
 
@@ -14,13 +13,20 @@ from metadata.long_description import (
     normalize_long_description,
     validate_long_description,
 )
-from metadata.prompts import _separator
+from metadata.prompts import (
+    _field_separator,
+    _menu_choice,
+    _separator,
+    field_name,
+    paint_yellow,
+    queue_line_for_editing as _queue_line_for_editing,
+)
 
 
 def _print_between_separators(message: str) -> None:
     """Print a message between a ===== line and a ----- line."""
     print(_separator('='))
-    print(f'{constants.ICON_WARNING} {message}')
+    print(paint_yellow(f'{constants.ICON_WARNING} {message}'))
     print(_separator('-'))
 
 
@@ -212,63 +218,6 @@ def _read_line(prompt: str) -> str | None:
         raise
 
 
-def _queue_windows_console_text(text: str) -> bool:
-    """Type *text* into the Windows console so the next ``input()`` can edit it."""
-    import ctypes
-    from ctypes import wintypes
-
-    class _KeyEvent(ctypes.Structure):
-        _fields_ = [
-            ('bKeyDown', wintypes.BOOL),
-            ('wRepeatCount', wintypes.WORD),
-            ('wVirtualKeyCode', wintypes.WORD),
-            ('wVirtualScanCode', wintypes.WORD),
-            ('uChar', wintypes.WCHAR),
-            ('dwControlKeyState', wintypes.DWORD),
-        ]
-
-    class _Event(ctypes.Union):
-        _fields_ = [('KeyEvent', _KeyEvent)]
-
-    class _InputRecord(ctypes.Structure):
-        _fields_ = [('EventType', wintypes.WORD), ('Event', _Event)]
-
-    kernel32 = ctypes.windll.kernel32
-    handle = kernel32.GetStdHandle(-10)
-    mode = wintypes.DWORD()
-    if not kernel32.GetConsoleMode(handle, ctypes.byref(mode)):
-        return False
-    units = text.encode('utf-16-le')
-    chars = [units[i:i + 2].decode('utf-16-le', 'surrogatepass') for i in range(0, len(units), 2)]
-    records = (_InputRecord * (len(chars) * 2))()
-    for index, char in enumerate(chars):
-        for offset, key_down in ((0, True), (1, False)):
-            record = records[index * 2 + offset]
-            record.EventType = 0x0001
-            record.Event.KeyEvent.bKeyDown = key_down
-            record.Event.KeyEvent.wRepeatCount = 1
-            record.Event.KeyEvent.uChar = char
-    written = wintypes.DWORD()
-    ok = kernel32.WriteConsoleInputW(handle, records, len(records), ctypes.byref(written))
-    return bool(ok) and written.value == len(records)
-
-
-def _queue_line_for_editing(text: str) -> bool:
-    """Put *text* on the next input line. Return False when the terminal cannot do it."""
-    if not text:
-        return False
-    try:
-        if not sys.stdin.isatty():
-            return False
-        if os.name == 'nt':
-            return _queue_windows_console_text(text)
-        import readline
-    except (ImportError, OSError, AttributeError, ValueError):
-        return False
-    readline.set_startup_hook(lambda: readline.insert_text(text))
-    return True
-
-
 def _read_prefilled(prompt: str, text: str) -> tuple[str | None, bool]:
     """Read a line that starts with *text*. Also returns whether *text* was placed."""
     prefilled = _queue_line_for_editing(text)
@@ -301,8 +250,7 @@ def _load_from_editor(lines: list[str]) -> list[str] | None:
 
 def _choice(key: str, text: str) -> str:
     """One menu row. Numbers use the same ``1.`` form as the other prompts."""
-    label = 'Enter' if key == 'Enter' else f'{key}.'
-    return f'  {label}'.ljust(12) + text
+    return _menu_choice(key, text)
 
 
 def _choose_entry_mode(*, has_current: bool = False) -> str:
@@ -428,13 +376,13 @@ def input_html_text(
     ``1`` changes it in the terminal, and ``2`` opens Notepad. Markdown from
     Notepad is stored as HTML.
     """
-    top_sep = _separator('=')
+    top_sep = _field_separator()
     bottom_sep = _separator('-')
     current_block = ''
     if default:
         shown = '\n'.join(f'  {line}' for line in default.splitlines() or [''])
         current_block = (
-            f'  Current value:\n'
+            f'  {constants.ICON_WARNING} {paint_yellow("Current value:")}\n'
             f'{shown}\n'
             f'{bottom_sep}\n'
         )
@@ -445,7 +393,7 @@ def input_html_text(
         limit_line = f' ({note})'
     print(
         f'{top_sep}\n'
-        f'{name}{limit_line}\n'
+        f'{field_name(name)}{limit_line}\n'
         f'{bottom_sep}\n'
         f'{current_block}'.rstrip('\n')
     )
