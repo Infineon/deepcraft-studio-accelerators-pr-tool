@@ -14,16 +14,21 @@ from metadata.choices import (
     PARTNER_BRANDS,
     accelerator_links,
     brand_for_image,
-    devices_for_kits,
     is_known_brand_image,
     model_zoo_psoc_links,
     model_zoo_aurix_links,
     normalize_project_types,
+)
+from metadata.rules import (
+    devices_for_kits,
+    domains_for_sensors,
+    image_names_for_applications,
+    sensor_groups,
+    use_cases_for_applications,
     workflow_for_types,
 )
 from metadata.improj import (
     VISION_DEVICES,
-    VISION_DOMAIN,
     VISION_KITS,
     VISION_SENSORS,
     algorithm_from_improj,
@@ -70,6 +75,17 @@ def _apply_derived_fields(result: dict, previous: dict) -> None:
         if derived_devices is not None:
             result['device'] = derived_devices
 
+    if 'sensors' in result and isinstance(result.get('sensors'), list):
+        sensors = result['sensors']
+    elif isinstance(previous.get('sensors'), list):
+        sensors = previous['sensors']
+    else:
+        sensors = None
+    if isinstance(sensors, list) and sensors:
+        allowed_domains = domains_for_sensors(sensors)
+        if allowed_domains:
+            result['domain'] = list(allowed_domains)
+
 
 def _resolve_algorithm(
     result: dict,
@@ -109,10 +125,74 @@ def _vision_defaults_for_collect(
     return {
         'algorithm': algorithm,
         'sensors': list(VISION_SENSORS),
-        'domain': list(VISION_DOMAIN),
         'kit': kits,
         'device': devices,
     }
+
+
+def _selected_list(result: dict, previous: dict, key: str) -> list[str]:
+    value = result.get(key)
+    if isinstance(value, list) and value:
+        return [item for item in value if isinstance(item, str)]
+    value = previous.get(key)
+    if isinstance(value, list):
+        return [item for item in value if isinstance(item, str)]
+    return []
+
+
+def _collect_domain(
+    field: FieldSpec,
+    *,
+    previous: dict,
+    result: dict,
+) -> list[str]:
+    """Select every domain the sensors map to, or prompt when a sensor has no rule."""
+    allowed = domains_for_sensors(_selected_list(result, previous, 'sensors'))
+    if allowed:
+        print(f'\nDomain derived from sensor(s): {", ".join(allowed)}')
+        return list(allowed)
+    prev_value = previous.get(field.key)
+    default = prev_value if isinstance(prev_value, list) else None
+    return input_choices(
+        field.label,
+        list(field.choices),
+        default=default,
+        allow_custom=field.allow_custom,
+        prefer_listed=field.key in LISTED_ONLY_FIELD_KEYS,
+    )
+
+
+def _sensor_prompt_groups(choices: list[str]) -> list[tuple[str, list[str]]]:
+    """Sensor names under their domain, for the choice prompt."""
+    return sensor_groups(choices)
+
+
+def _collect_use_case(
+    field: FieldSpec,
+    *,
+    previous: dict,
+    result: dict,
+) -> list[str]:
+    """Offer the use cases that fit the selected applications."""
+    applications = _selected_list(result, previous, 'application')
+    allowed = use_cases_for_applications(applications)
+    choices = list(allowed) if allowed is not None else list(field.choices)
+    prev_value = previous.get(field.key)
+    default = prev_value if isinstance(prev_value, list) else None
+    if allowed is not None and default:
+        default = [item for item in default if item in allowed] or None
+    if allowed is not None:
+        print(
+            f'\nUse cases follow the selected application(s): '
+            f'{", ".join(applications)}'
+        )
+    return input_choices(
+        field.label,
+        choices,
+        default=default,
+        allow_custom=field.allow_custom,
+        prefer_listed=field.key in LISTED_ONLY_FIELD_KEYS,
+    )
 
 
 def _collect_device(
@@ -120,18 +200,16 @@ def _collect_device(
     *,
     previous: dict,
     result: dict,
-    review_pass: bool,
 ) -> list[str]:
+    """Use the kit mapping. Ask only when a kit has no device."""
     kits = result.get('kit') or previous.get('kit')
     derived = None
     if isinstance(kits, list) and kits:
         derived = devices_for_kits(kits)
-    default = previous.get(field.key) if isinstance(previous.get(field.key), list) else None
-    if derived is not None and not default:
-        default = derived
-    if derived is not None and not review_pass:
+    if derived is not None:
         print(f'\nDevice(s) derived from kit: {", ".join(derived)}')
         return derived
+    default = previous.get(field.key) if isinstance(previous.get(field.key), list) else None
     return input_choices(
         field.label,
         list(field.choices),
@@ -257,14 +335,28 @@ def _collect_metrics(previous: dict) -> list[dict] | None:
     return metrics or None
 
 
-def _collect_image(args: Namespace, *, use_cli_args: bool, previous: dict) -> str:
+def _collect_image(
+    args: Namespace,
+    *,
+    use_cli_args: bool,
+    previous: dict,
+    result: dict,
+) -> str:
     image_arg = args.image if use_cli_args else None
     tag_arg = args.tag if use_cli_args else None
     default = previous.get('thumbnail_image_id') or previous.get('main_image_id')
+    applications = _selected_list(result, previous, 'application')
+    image_names = image_names_for_applications(applications)
+    if image_names is not None:
+        print(
+            f'\nImage list follows the selected application(s): '
+            f'{", ".join(applications)}'
+        )
     return select_project_image(
         image_arg=image_arg,
         tag_arg=tag_arg,
         default=default,
+        image_names=image_names,
     )
 
 
@@ -314,13 +406,17 @@ def _collect_field(
             review_pass=review_pass,
         )
 
+    if field.key == 'domain':
+        return _collect_domain(field, previous=previous, result=result)
+
+    if field.key == 'use_case':
+        return _collect_use_case(field, previous=previous, result=result)
+
     if field.key == 'device':
         if vision is not None and not review_pass:
             print(f'\nDevice(s) derived from vision ProjectType: {", ".join(vision["device"])}')
             return list(vision['device'])
-        return _collect_device(
-            field, previous=previous, result=result, review_pass=review_pass,
-        )
+        return _collect_device(field, previous=previous, result=result)
 
     if field.kind == 'brand':
         fallback = INFINEON_BRAND.label if repo_key == 'model-zoo-aurix' else None
@@ -353,12 +449,11 @@ def _collect_field(
             allow_custom=field.allow_custom,
         )
     if field.kind == 'multi_choice':
-        if field.key in ('sensors', 'domain', 'kit') and vision is not None:
+        if field.key in ('sensors', 'kit') and vision is not None:
             auto_value = list(vision[field.key])
             if not review_pass:
                 label = {
                     'sensors': 'Sensor(s)',
-                    'domain': 'Domain',
                     'kit': 'Kit(s)',
                 }[field.key]
                 print(f'\n{label} derived from vision ProjectType: {", ".join(auto_value)}')
@@ -371,6 +466,7 @@ def _collect_field(
                 default=default,
                 allow_custom=field.allow_custom,
                 prefer_listed=field.key in LISTED_ONLY_FIELD_KEYS,
+                groups=_sensor_prompt_groups(list(field.choices)) if field.key == 'sensors' else None,
             )
         if field.key == 'type':
             default = normalize_project_types(prev_value) or None
@@ -387,12 +483,15 @@ def _collect_field(
                 default=default,
                 allow_custom=field.allow_custom,
                 prefer_listed=field.key in LISTED_ONLY_FIELD_KEYS,
+                groups=_sensor_prompt_groups(list(field.choices)) if field.key == 'sensors' else None,
             )
         if field.join_values:
             return [', '.join(chosen)]
         return chosen
     if field.kind == 'image':
-        return _collect_image(args, use_cli_args=use_cli_args, previous=previous)
+        return _collect_image(
+            args, use_cli_args=use_cli_args, previous=previous, result=result,
+        )
     if field.kind == 'accelerator_links':
         return accelerator_links(project_name)
     if field.kind == 'model_zoo_psoc_links':
@@ -441,9 +540,9 @@ def collect_metadata(
 ) -> dict:
     """Build metadata dict following ``schema`` field order and rules.
 
-    *review_pass*: when True (user chose to re-edit after the overview), auto-derived
-    fields such as algorithm / vision sensors / kits are prompted with defaults so
-    the user can change them.
+    *review_pass*: when True (user chose to re-edit after the overview), defaults
+    such as algorithm and vision sensors / kits are prompted so the user can
+    change them. A device that follows a known kit is filled in without a prompt.
     """
     previous = previous or {}
     result: dict = dict(previous)

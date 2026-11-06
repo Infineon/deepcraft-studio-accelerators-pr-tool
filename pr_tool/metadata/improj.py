@@ -104,7 +104,7 @@ def apply_vision_metadata_defaults(metadata: dict, *, only_missing_kit: bool = F
         isinstance(metadata.get('kit'), list) and metadata['kit']
     ):
         metadata['kit'] = list(VISION_KITS)
-    from metadata.choices import devices_for_kits
+    from metadata.rules import devices_for_kits
     kits = metadata.get('kit') if isinstance(metadata.get('kit'), list) else []
     devices = devices_for_kits(kits) if kits else None
     if devices is not None:

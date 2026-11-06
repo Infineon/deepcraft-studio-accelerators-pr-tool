@@ -15,8 +15,8 @@ from metadata.choices import (
     brand_for_image,
     match_choice,
     normalize_project_types,
-    workflow_for_types,
 )
+from metadata.rules import workflow_for_types
 from metadata.schema import FieldSpec, MetadataSchema
 from project_layouts import get_project_layout
 from target_repo import TargetRepo

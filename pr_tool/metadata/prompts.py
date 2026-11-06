@@ -79,7 +79,6 @@ def colour_key_line() -> str:
         f'  Color Code: {paint_green("green")} field names, '
         f'{paint_cyan("cyan")} choices and options, '
         f'{paint_yellow("yellow")} current values and warnings, '
-        f'{paint_grey("grey")} inner lines, '
         f'{paint_magenta("magenta")} others.'
     )
 
@@ -423,6 +422,79 @@ def _format_grouped_choices(groups: list[tuple[str, list[str]]]) -> str:
     return '\n'.join(lines)
 
 
+def _column_sizes(count: int, limit: int = 4) -> list[int]:
+    """Split *count* items into columns of at most *limit*, as evenly as possible."""
+    if count <= limit:
+        return [count]
+    column_count = (count + limit - 1) // limit
+    base, remainder = divmod(count, column_count)
+    return [base + 1] * remainder + [base] * (column_count - remainder)
+
+
+def _format_domain_choices(groups: list[tuple[str, list[str]]]) -> str:
+    """Domains side by side, sensors listed downward under each magenta heading.
+
+    A domain with more than four sensors continues in the next columns, three or
+    four sensors each. The heading is shown on the first of those columns.
+    A further row of domains starts below when the next column does not fit
+    the terminal width.
+    """
+    columns: list[list[tuple[str, str]]] = []
+    index = 1
+    number_width = len(str(sum(len(items) for _, items in groups))) or 1
+    for heading, items in groups:
+        offset = 0
+        for column_number, size in enumerate(_column_sizes(len(items))):
+            if column_number == 0:
+                column = [(heading, paint_magenta(heading))]
+            else:
+                column = [('', '')]
+            for item in items[offset:offset + size]:
+                number = f'{index:>{number_width}}.'
+                column.append((f'  {number} {item}', f'  {paint_cyan(number)} {item}'))
+                index += 1
+            offset += size
+            columns.append(column)
+    if not columns:
+        return ''
+    widths = [max(len(plain) for plain, _ in column) for column in columns]
+    gap = constants.COLUMN_PADDING
+    term_width = shutil.get_terminal_size((80, 24)).columns
+    bands: list[list[int]] = []
+    current: list[int] = []
+    used = 0
+    for column_index, width in enumerate(widths):
+        extra = width if not current else gap + width
+        if current and used + extra > term_width:
+            bands.append(current)
+            current = [column_index]
+            used = width
+        else:
+            current.append(column_index)
+            used += extra
+    if current:
+        bands.append(current)
+    rendered: list[str] = []
+    for band_index, band in enumerate(bands):
+        if band_index:
+            rendered.append('')
+        height = max(len(columns[column_index]) for column_index in band)
+        for row in range(height):
+            cells: list[str] = []
+            for position, column_index in enumerate(band):
+                column = columns[column_index]
+                pad = widths[column_index]
+                painted = ''
+                if row < len(column):
+                    plain, painted = column[row]
+                    pad -= len(plain)
+                if position < len(band) - 1:
+                    pad += gap
+                cells.append(painted + (' ' * pad))
+            rendered.append(''.join(cells).rstrip())
+    return '\n'.join(rendered)
+
+
 def input_grouped_choice(
     name: str,
     groups: list[tuple[str, list[str]]],
@@ -587,8 +659,13 @@ def input_choices(
     allow_custom: bool = True,
     prefer_listed: bool = False,
     coloured_name: bool = True,
+    groups: list[tuple[str, list[str]]] | None = None,
 ) -> list[str]:
-    choices_sub_list = _format_choices(choices)
+    if groups:
+        choices = [item for _, items in groups for item in items]
+        choices_sub_list = _format_domain_choices(groups)
+    else:
+        choices_sub_list = _format_choices(choices)
     range_str = f'between 1 and {len(choices)}'
     top_sep = _field_separator()
     saved = (
