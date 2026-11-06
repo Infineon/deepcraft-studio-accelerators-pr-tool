@@ -162,9 +162,19 @@ When metadata is ready, the tool shows a preview and asks:
 When the push completes, the tool creates or reuses the pull request (retrying
 and using the GitHub API when ``gh pr create`` struggles with very large
 diffs), waits until GitHub exposes it (up to about 5 minutes), then opens it
-in the browser and prints the PR URL. If that automatic step still fails, it
+in the browser and prints the PR URL. If creating the pull request still fails, it
 opens the GitHub compare page so you can click **Create pull request**, and
 also prints fork/repo links plus the compare URL.
+
+When the pull request was just created and the metadata contains values that
+are not in the tool's lists, the tool posts a review comment on it. The comment
+opens with a bold **NEW VALUES DETECTED** heading and the sentence
+"The metadata file of this project contains new values to be reviewed."
+Below that, each new catalog entry (a sensor, kit, use case, and so on) and
+each new project image is a list line. A new partner is called out in its own
+highlighted block. Re-running against an open pull request does not post that
+comment again. `pr_comment.py` builds the lines and posts the comment, using
+the same `gh` calls as the rest of the tool.
 
 ### Interactive metadata
 

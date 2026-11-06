@@ -36,6 +36,7 @@ from constants import (
 from input import Input, confirm
 from updater import ensure_latest_version
 from metadata import confirm_metadata, finalize_metadata, format_metadata_json, get_metadata_schema
+from pr_comment import _post_review_comment
 from metadata.prompts import colour_key_line, paint_magenta, paint_words
 from submission_exclusions import (
     build_submission_exclude_pathspecs,
@@ -518,9 +519,13 @@ def open_or_create_pull_request(
     head_branch: str,
     project_name: str,
     target_repo,
+    metadata: dict | None = None,
+    metadata_schema=None,
 ) -> str | None:
     """Create or reuse a PR, poll until a URL is available, then open the browser.
 
+    A newly created PR gets a review comment when *metadata* has values that
+    are not in the tool's lists. An existing open PR is left as it is.
     Returns the PR URL on success, or ``None`` when creation/lookup failed.
     Expected ``gh`` misses (no PR yet) do not dump raw CLI help to the user.
     On create failure for large pushes, opens the GitHub compare page so the user
@@ -543,6 +548,7 @@ def open_or_create_pull_request(
     )
 
     pr_url: str | None = None
+    created = False
     if pr_state == 'OPEN':
         cli.progress('Open PR found. Confirming it with GitHub...')
     else:
@@ -554,7 +560,8 @@ def open_or_create_pull_request(
         pr_url = create_pull_request_with_retries(
             head_branch, project_name, target_repo,
         )
-        if not looks_like_url(pr_url or ''):
+        created = looks_like_url(pr_url or '')
+        if not created:
             compare = _pr_compare_url(head_branch, target_repo)
             print()
             print(f'  {ICON_ERROR} Could not create the pull request automatically.')
@@ -575,6 +582,8 @@ def open_or_create_pull_request(
     if not looks_like_url(pr_url or ''):
         pr_url = wait_for_pull_request_url(head_branch)
     if looks_like_url(pr_url or ''):
+        if created and metadata is not None and metadata_schema is not None:
+            _post_review_comment(gh, cli, head_branch, target_repo, metadata, metadata_schema)
         cli.progress('Opening pull request in browser...')
         if not open_url_in_browser(pr_url):
             gh(['pr', 'view', head_branch, '--web'], check=False, quiet_stderr=True)
@@ -977,6 +986,7 @@ try:  # Always remove git_dir after this block
 
             pr_url = open_or_create_pull_request(
                 head_branch, project_name, target_repo,
+                metadata=metadata, metadata_schema=metadata_schema,
             )
 
             if looks_like_url(pr_url or ''):

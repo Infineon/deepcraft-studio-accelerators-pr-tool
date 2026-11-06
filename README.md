@@ -36,7 +36,7 @@ GitHub auth, fork sync, branching, push, and opens the PR in your browser.
 | **`.gitignore`** | Ignores local scratch, virtual environments, and OS artefacts. |
 | **`scripts/parse_master_json.py`** | Fetches the DEEPCRAFT AI Hub `master.json` (or reads a local copy) and prints unique catalog values for `domain`, `application`, `use_case`, `kit`, `device`, and brand fields. Use the output to update `metadata/choices.py` manually. |
 | **`pr_tool/README.md`** | End-user documentation: step-by-step usage, metadata behaviour, CLI flags, examples, troubleshooting. |
-| **`pr_tool/pr_tool.py`** | Main entry point. Orchestrates project summary, metadata collection/review, git/gh setup, fork sync, sparse clone, chunked push, and PR creation. Validates registries at import time. |
+| **`pr_tool/pr_comment.py`** | Reviewer comment posted after a new pull request is created, including the GitHub post. `REVIEW_NOTES` lists the checks: new catalog entries, a new partner, and a new project image. Add a function there to flag something else. |
 | **`pr_tool/updater.py`** | On startup, updates a non-git copy of the tool to the latest `main` commit (skipped for git checkouts, `--no-update`, or when `BASE_REPO_OWNER` is not `Infineon`). |
 | **`pr_tool/cli.py`** | `Cli` class wrapping `git` and `gh` subprocess calls. Resolves bundled vs system `gh`, enforces minimum git version, handles auth refresh, and prints commands when `--verbose` is set. |
 | **`pr_tool/constants.py`** | Shared settings: `TARGET_REPOS` registry, git/GitHub defaults, UI icons, column padding for choice prompts. |
@@ -81,6 +81,7 @@ project_layouts.py        LAYOUTS        (layout name → folder rules)
 submission_exclusions.py  filters        (git/Python artefacts → layout + push)
 metadata/choices.py       tuples         (prompt suggestions)
 metadata/rules.py         mappings       (kit→device, type→workflow, sensor→domain)
+pr_comment.py             REVIEW_NOTES   (new values flagged on the pull request)
 ```
 
 `submission_exclusions.py` is separate from `project_layouts.py` and
@@ -104,6 +105,7 @@ folder name.
 | Video link checks | `metadata/video_link.py` |
 | Algorithm from `.improj` | `metadata/improj.py`, `engine.py` |
 | Git / PR flow | `pr_tool.py`, `cli.py` |
+| Reviewer comment after a new PR | `pr_comment.py` (`REVIEW_NOTES`) |
 
 ### Add a target repository
 
