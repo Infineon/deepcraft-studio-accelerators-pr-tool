@@ -220,10 +220,11 @@ Plain text with none of this markup is stored as plain text. Markdown is convert
 | `hr` | Horizontal rule | Accepted |
 
 If **`metadata.json` already exists**, the tool loads it first: missing fields
-are prompted; values not in the AI Hub–based suggested lists show a warning
-(this is normal for new projects with sensors, kits, or devices not yet in the
-catalog, or if the file was edited or is outdated). You can continue, edit
-`metadata.json`, or re-run with `--override-metadata`.
+are prompted; values not in the AI Hub–based suggested lists show a warning.
+It is common for new projects to use values that are not yet in the catalog,
+and a new partner always shows here, as "a new partner, not one of the known
+brands". The brand image must be a `.webp` file name, such as `acme.webp`. You
+can continue, edit `metadata.json`, or re-run with `--override-metadata`.
 
 ### Updating an existing pull request
 

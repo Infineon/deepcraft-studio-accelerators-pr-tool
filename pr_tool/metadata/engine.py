@@ -44,6 +44,7 @@ from metadata.prompts import (
     input_grouped_choice,
     input_metric_value,
     input_str,
+    warn,
 )
 from metadata.schema import FieldSpec, MetadataSchema
 from metadata.video_prompt import collect_videos, videos_are_empty
@@ -263,11 +264,16 @@ def _collect_custom_brand(previous: dict) -> Brand:
     image_default = prev_image if isinstance(prev_image, str) and not is_known_brand_image(prev_image) else None
     url_default = prev_url if isinstance(prev_url, str) and image_default else None
     print('\nEnter brand details for the new brand/partner.')
-    brand_image_id = input_str(
-        'Brand image file name',
-        max_len=None,
-        default=image_default,
-    )
+    while True:
+        brand_image_id = input_str(
+            'Brand image file name',
+            max_len=None,
+            default=image_default,
+        )
+        if brand_image_id.lower().endswith('.webp'):
+            break
+        warn('Enter an image file name ending in .webp, for example acme.webp.')
+        image_default = None
     brand_url = input_str(
         'Brand URL',
         max_len=None,

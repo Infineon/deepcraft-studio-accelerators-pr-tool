@@ -110,23 +110,25 @@ def validate_loaded_metadata(
             continue
         if result.choice_violations:
             print(
-                f'\n{constants.ICON_WARNING} Your project\'s metadata.json uses values '
-                f'that are not in this tool\'s suggested lists, which are based on the projects '
-                f'already available in the DEEPCRAFT\u2122 AI Hub:',
+                f'\n{constants.ICON_WARNING} Review needed: used value(s) are not in the '
+                f'suggested lists.',
             )
             for issue in result.choice_violations:
                 print(f'  - {issue}')
             print(
-                f'\n{constants.ICON_INFO} Common for new projects that use sensors, kits, '
-                f'devices, applications, use cases, or algorithms not yet in the AI Hub '
-                f'catalog, or if metadata.json was edited, copied, or saved before the '
-                f'lists were updated.',
+                f'\n{constants.ICON_INFO} Values not yet in the AI Hub catalog are common '
+                f'for new projects.',
             )
             print(
-                f'\n{constants.ICON_INFO} You did not see the suggested lists for these '
-                f'fields on this run. If a value was meant to match an existing one, '
-                f'choose redo (n) to browse the lists and pick from them. Choose yes (y) '
-                f'only if you intend to keep these as new values.',
+                f'  Also expected when metadata.json was edited or saved before the lists '
+                f'were updated.',
+            )
+            print(
+                f'\n{constants.ICON_INFO} Choose redo (n) to browse the lists and pick an '
+                f'existing value.',
+            )
+            print(
+                f'  Choose yes (y) only if these values are meant to be new.',
             )
             if result.choice_fields & {'sensors', 'domain'}:
                 print(
@@ -344,11 +346,17 @@ def _validate_brand(metadata: dict, spec: FieldSpec, result: MetadataValidationR
         _mark_missing(result, spec, 'Missing or empty required field: brand_url')
         return
     if brand_image_id not in BRAND_IMAGE_ID:
-        _mark_choice(
-            result, spec,
-            f'brand_image_id: {brand_image_id!r} is not in the allowed list '
-            f'({len(BRAND_IMAGE_ID)} known brands)',
-        )
+        if brand_image_id.lower().endswith('.webp'):
+            message = (
+                f'brand_image_id: {brand_image_id!r} is a new partner, not one of the '
+                f'{len(BRAND_IMAGE_ID)} known brands'
+            )
+        else:
+            message = (
+                f'brand_image_id: {brand_image_id!r} is not an image file name, '
+                f'for example acme.webp'
+            )
+        _mark_choice(result, spec, message)
         return
     expected_url = brand_for_image(brand_image_id).brand_url
     if brand_url != expected_url:
