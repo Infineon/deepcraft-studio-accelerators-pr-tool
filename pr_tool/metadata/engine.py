@@ -23,8 +23,12 @@ from metadata.rules import (
     devices_for_kits,
     domains_for_sensors,
     image_names_for_applications,
+    image_names_for_context,
+    image_names_for_domains,
     sensor_groups,
     use_cases_for_applications,
+    use_cases_for_context,
+    use_cases_for_domains,
     workflow_for_types,
 )
 from metadata.improj import (
@@ -168,25 +172,59 @@ def _sensor_prompt_groups(choices: list[str]) -> list[tuple[str, list[str]]]:
     return sensor_groups(choices)
 
 
+def _follows_scope(
+    subject: str,
+    applications: list[str],
+    domains: list[str],
+    by_application: list[str] | None,
+    by_domain: list[str] | None,
+    *,
+    empty_noun: str,
+) -> None:
+    """Say which application and domain lists a prompt is using."""
+    lines: list[str] = []
+    if by_application is not None:
+        lines.append(f'application(s): {", ".join(applications)}')
+    if by_domain is not None:
+        lines.append(f'domain(s): {", ".join(domains)}')
+    if not lines:
+        return
+    print(f'\n{subject} follow the selected {lines[0]}')
+    for line in lines[1:]:
+        print(f'and the selected {line}')
+    if by_application is not None and by_domain is not None:
+        if not set(by_application) & set(by_domain):
+            print(f'  No listed {empty_noun} fits both, so the list follows the domain.')
+
+
+def _use_case_scope(applications: list[str], domains: list[str]) -> None:
+    """Say which application and domain lists the use-case prompt is using."""
+    _follows_scope(
+        'Use cases',
+        applications,
+        domains,
+        use_cases_for_applications(applications),
+        use_cases_for_domains(domains),
+        empty_noun='use case',
+    )
+
+
 def _collect_use_case(
     field: FieldSpec,
     *,
     previous: dict,
     result: dict,
 ) -> list[str]:
-    """Offer the use cases that fit the selected applications."""
+    """Offer the use cases that fit the selected applications and domains."""
     applications = _selected_list(result, previous, 'application')
-    allowed = use_cases_for_applications(applications)
+    domains = _selected_list(result, previous, 'domain')
+    allowed = use_cases_for_context(applications, domains)
     choices = list(allowed) if allowed is not None else list(field.choices)
     prev_value = previous.get(field.key)
     default = prev_value if isinstance(prev_value, list) else None
     if allowed is not None and default:
         default = [item for item in default if item in allowed] or None
-    if allowed is not None:
-        print(
-            f'\nUse cases follow the selected application(s): '
-            f'{", ".join(applications)}'
-        )
+    _use_case_scope(applications, domains)
     return input_choices(
         field.label,
         choices,
@@ -352,12 +390,16 @@ def _collect_image(
     tag_arg = args.tag if use_cli_args else None
     default = previous.get('thumbnail_image_id') or previous.get('main_image_id')
     applications = _selected_list(result, previous, 'application')
-    image_names = image_names_for_applications(applications)
-    if image_names is not None:
-        print(
-            f'\nImage list follows the selected application(s): '
-            f'{", ".join(applications)}'
-        )
+    domains = _selected_list(result, previous, 'domain')
+    image_names = image_names_for_context(applications, domains)
+    _follows_scope(
+        'Images and tags',
+        applications,
+        domains,
+        image_names_for_applications(applications),
+        image_names_for_domains(domains),
+        empty_noun='image',
+    )
     return select_project_image(
         image_arg=image_arg,
         tag_arg=tag_arg,

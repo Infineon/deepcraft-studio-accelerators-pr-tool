@@ -350,12 +350,50 @@ def confirm(question: str) -> bool:
         warn("Please answer 'y' or 'n'.")
 
 
-def confirm_metadata() -> str:
-    """Returns ``'yes'``, ``'no'`` (redo), or ``'abort'``."""
+def _choice_menu(question: str, options: list[tuple[str, str]]) -> str:
+    """A question with menu rows, using the same rules as the other prompts."""
+    top_sep = _field_separator()
+    bottom_sep = _separator('-')
+    rows = '\n'.join(_menu_choice(key, text) for key, text in options)
+    return (
+        f'{top_sep}\n'
+        f'{question}\n'
+        f'{bottom_sep}\n'
+        f'  Choose an option:\n'
+        f'{rows}\n'
+        f'{bottom_sep}\n'
+        f': '
+    )
+
+
+def confirm_menu(question: str, *, yes: str, no: str) -> bool:
+    """Yes/no question shown as a menu. ``y`` returns True."""
+    prompt = _choice_menu(question, [('y', yes), ('n', no)])
     while True:
-        answer = input(
-            'Proceed with this metadata? (y = yes / n = redo / a = abort): '
-        ).strip().lower()
+        answer = input(prompt).strip().lower()
+        if answer in ('y', 'yes'):
+            return True
+        if answer in ('n', 'no'):
+            return False
+        warn("Please answer 'y' or 'n'.")
+
+
+def confirm_metadata(*, save_on_yes: bool = False) -> str:
+    """Returns ``'yes'``, ``'no'`` (modify), or ``'abort'``.
+
+    The question is a menu. With *save_on_yes*, the yes row says it saves metadata.json.
+    """
+    yes_text = 'Yes, save metadata.json' if save_on_yes else 'Yes, keep these values'
+    prompt = _choice_menu(
+        'Proceed with this metadata?',
+        [
+            ('y', yes_text),
+            ('n', 'Modify the metadata'),
+            ('a', 'Abort without saving'),
+        ],
+    )
+    while True:
+        answer = input(prompt).strip().lower()
         if answer in ('y', 'yes'):
             return 'yes'
         if answer in ('n', 'no'):

@@ -37,7 +37,7 @@ from input import Input, confirm
 from updater import ensure_latest_version
 from metadata import confirm_metadata, finalize_metadata, format_metadata_json, get_metadata_schema
 from pr_comment import _post_review_comment
-from metadata.prompts import colour_key_line, paint_magenta, paint_words
+from metadata.prompts import colour_key_line, confirm_menu, paint_magenta, paint_words
 from submission_exclusions import (
     build_submission_exclude_pathspecs,
     filter_submission_paths,
@@ -188,6 +188,70 @@ def print_header(title: str, *, icon: str = '') -> None:
     print(f'\n{sep}')
     print(f'  {label}')
     print(sep)
+
+
+def _readme_status(target_repo, project_path: Path) -> str:
+    found = (project_path / 'README.md').is_file()
+    if target_repo.metadata_only:
+        return f'{ICON_SUCCESS} found' if found else f'{ICON_INFO} optional for this target'
+    return f'{ICON_SUCCESS} found' if found else f'{ICON_WARNING} missing (required)'
+
+
+def print_project_summary(
+    *,
+    target_repo,
+    repo_key: str,
+    project_path: Path,
+    project_name: str,
+    metadata_status: str,
+    readme_status: str,
+) -> None:
+    """Print the target, path, and branch that a submission will use."""
+    print(f'  Target        : {paint_words(target_repo.label, TARGET_HIGHLIGHT_WORDS)} ({repo_key})')
+    print(f'  Repository    : {target_repo.base_repo}')
+    print(f'  Project path  : {project_path}')
+    print(f'  Project name  : {project_name}')
+    if target_repo.metadata_only:
+        print('  Output        : metadata.json only (no pull request)')
+    else:
+        print(f'  Branch        : {project_name}')
+    print(f'  Project layout: {target_repo.project_layout}')
+    print(f'  metadata.json : {metadata_status}')
+    print(f'  README.md     : {readme_status}')
+
+
+def project_yes_label(target_repo) -> str:
+    """Yes row for the project question, naming the steps that follow."""
+    if target_repo.metadata_only:
+        return 'Yes, 1. create/review metadata.json'
+    return 'Yes, 1. create/review metadata.json, 2. submit pull request'
+
+
+def confirm_submission(target_repo, repo_key: str, project_path: Path, project_name: str) -> None:
+    """Show what will be submitted and stop if the user declines.
+
+    Only for targets that push and open a pull request. metadata.json is already
+    saved when this runs. Declining leaves that file in place and does not fork,
+    push, or open a pull request.
+    """
+    print_header('Submission summary', icon=ICON_INFO)
+    print(f'{ICON_SUCCESS} metadata.json has been saved. Review what will be submitted:')
+    print()
+    print_project_summary(
+        target_repo=target_repo,
+        repo_key=repo_key,
+        project_path=project_path,
+        project_name=project_name,
+        metadata_status=f'{ICON_SUCCESS} saved',
+        readme_status=_readme_status(target_repo, project_path),
+    )
+    print()
+    question = 'Proceed with pull request?'
+    if not confirm(question):
+        print(f'{ICON_ABORT} Aborted by user.')
+        print(f'{ICON_INFO} metadata.json was saved. Nothing was pushed.')
+        sys.exit(0)
+    print()
 
 
 def looks_like_url(value: str) -> bool:
@@ -624,34 +688,23 @@ try:
 
     # Initial summary
     print_header('Project Summary', icon=ICON_INFO)
-    print(f'  Target        : {paint_words(target_repo.label, TARGET_HIGHLIGHT_WORDS)} ({args.repo_key})')
-    print(f'  Repository    : {target_repo.base_repo}')
-    print(f'  Project path  : {project_path}')
-    print(f'  Project name  : {project_name}')
-    if target_repo.metadata_only:
-        print('  Output        : metadata.json only (no pull request)')
-    else:
-        print(f'  Branch        : {branch_name}')
-    has_existing_metadata = metadata_path.exists()
-    meta_status = (
-        f'{ICON_SUCCESS} found' if has_existing_metadata
-        else f'{ICON_INFO} not found — will be created'
+    print_project_summary(
+        target_repo=target_repo,
+        repo_key=args.repo_key,
+        project_path=project_path,
+        project_name=project_name,
+        metadata_status=(
+            f'{ICON_SUCCESS} found' if metadata_path.exists()
+            else f'{ICON_INFO} not found — will be created'
+        ),
+        readme_status=_readme_status(target_repo, project_path),
     )
-    print(f'  Project layout: {target_repo.project_layout}')
-    print(f'  metadata.json : {meta_status}')
-    if target_repo.metadata_only:
-        readme_status = (
-            f'{ICON_SUCCESS} found' if (project_path / 'README.md').is_file()
-            else f'{ICON_INFO} optional for this target'
-        )
-    else:
-        readme_status = (
-            f'{ICON_SUCCESS} found' if (project_path / 'README.md').is_file()
-            else f'{ICON_WARNING} missing (required)'
-        )
-    print(f'  README.md     : {readme_status}')
     print()
-    if not confirm('Proceed with this project and repository?'):
+    if not confirm_menu(
+        'Proceed with this project and repository?',
+        yes=project_yes_label(target_repo),
+        no='Abort',
+    ):
         print(f'{ICON_ABORT} Aborted by user.')
         sys.exit(0)
     print()
@@ -683,7 +736,7 @@ try:
         metadata = finalize_metadata(metadata, metadata_schema)
         print(f'\nProject {paint_magenta("metadata.json")} overview:')
         print(format_metadata_json(metadata, colour=True).rstrip('\n'))
-        answer = confirm_metadata()
+        answer = confirm_metadata(save_on_yes=True)
         if answer == 'yes':
             metadata_path.write_text(
                 format_metadata_json(metadata),
@@ -702,7 +755,8 @@ try:
         metadata = args.metadata
 
     # metadata_only is a target flag. Any future repo with it set stops here;
-    # field contents still come from that repo's schema.
+    # field contents still come from that repo's schema. Saving metadata.json is
+    # the whole job for these targets, so no submission question is asked.
     if target_repo.metadata_only:
         print()
         print(
@@ -710,6 +764,8 @@ try:
             f'Nothing is pushed to {target_repo.base_repo}.',
         )
         sys.exit(0)
+
+    confirm_submission(target_repo, args.repo_key, project_path, project_name)
 
     # Create CLI early so layout checks and GitHub setup can show spinners/progress.
     print()

@@ -54,7 +54,7 @@ GitHub auth, fork sync, branching, push, and opens the PR in your browser.
 | **`pr_tool/metadata/schema.py`** | `FieldSpec` and `MetadataSchema` types, field kinds, CLI flag registration per field. |
 | **`pr_tool/metadata/schemas.py`** | Per-repo metadata schemas (`SCHEMAS`). Defines field order and composition for accelerators, model-zoo-psoc, and model-zoo-aurix. |
 | **`pr_tool/metadata/choices.py`** | Suggested values (sensors, domain, kit, …), brand definitions, and link builders for each repo. |
-| **`pr_tool/metadata/rules.py`** | Autoselection rules: kit→device, type→workflow, sensor→domain, and application→use case and project image. Add a rule by extending the mapping in this file. |
+| **`pr_tool/metadata/rules.py`** | Autoselection rules: kit→device, type→workflow, sensor→domain, application→use case and project image, and domain→use case and project image. Add a rule by extending the mapping in this file. |
 | **`pr_tool/metadata/engine.py`** | Walks the schema to collect metadata interactively: derived device/workflow/algorithm, brand handling, links, and schema-ordered output. |
 | **`pr_tool/metadata/improj.py`** | Reads `{Project}.improj` `<ProjectType>` and maps it to `algorithm` (and vision defaults for object detection / image classification). |
 | **`pr_tool/metadata/prompts.py`** | Interactive prompts (`input_str`, `input_choice`, `input_choices`, confirmations) including custom-value title-casing. A saved value lists Enter, which keeps it, then `1` to modify it in place and `2` to type a new value. On a numbered list, Modify places the list numbers on the input line. The same two choices are on text, metric, and choice prompts, and any other answer is refused. |
@@ -137,7 +137,7 @@ Edit `metadata/schemas.py`. Fields are `FieldSpec(key, label, kind, …)`; **tup
 
 ### Update choice lists
 
-Edit tuples in `metadata/choices.py`, or run `python scripts/parse_master_json.py` to list current AI Hub values and copy what you need. Autoselection lives in `metadata/rules.py`: update `KIT_TO_DEVICE` when adding kits, `TYPE_TO_WORKFLOW` for a new project type, and `SENSOR_TO_DOMAIN` when a sensor should set the domain. `APPLICATION_USE_CASES` and `APPLICATION_IMAGES` limit the use-case and project-image lists to the selected application. Add `Brand` entries in `choices.py` for new partners. AURIX&trade; kit and device prompts use `AURIX_KIT` and `AURIX_DEVICE`, taken from published `deepcraft-model-zoo-for-aurix` metadata rather than `master.json`.
+Edit tuples in `metadata/choices.py`, or run `python scripts/parse_master_json.py` to list current AI Hub values and copy what you need. Autoselection lives in `metadata/rules.py`: update `KIT_TO_DEVICE` when adding kits, `TYPE_TO_WORKFLOW` for a new project type, and `SENSOR_TO_DOMAIN` when a sensor should set the domain. `APPLICATION_USE_CASES` and `APPLICATION_IMAGES` limit the use-case and project-image lists to the selected application. `DOMAIN_USE_CASES` and `DOMAIN_IMAGES` limit the use-case list and the project-image names and tags again to the selected domain. Add `Brand` entries in `choices.py` for new partners. AURIX&trade; kit and device prompts use `AURIX_KIT` and `AURIX_DEVICE`, taken from published `deepcraft-model-zoo-for-aurix` metadata rather than `master.json`.
 
 ### Add a project layout
 

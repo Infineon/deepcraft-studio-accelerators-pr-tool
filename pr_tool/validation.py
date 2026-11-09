@@ -124,7 +124,7 @@ def validate_loaded_metadata(
                 f'were updated.',
             )
             print(
-                f'\n{constants.ICON_INFO} Choose redo (n) to browse the lists and pick an '
+                f'\n{constants.ICON_INFO} Choose modify (n) to browse the lists and pick an '
                 f'existing value.',
             )
             print(
