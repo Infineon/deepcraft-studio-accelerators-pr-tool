@@ -29,6 +29,7 @@ from metadata.rules import (
     use_cases_for_applications,
     use_cases_for_context,
     use_cases_for_domains,
+    with_project_use_case,
     workflow_for_types,
 )
 from metadata.improj import (
@@ -43,11 +44,13 @@ from metadata.image_field import select_project_image
 from metadata.long_description_prompt import input_html_text
 from metadata.prompts import (
     confirm,
+    field_progress_prefix,
     input_choice,
     input_choices,
     input_grouped_choice,
     input_metric_value,
     input_str,
+    set_field_progress,
     warn,
 )
 from metadata.schema import FieldSpec, MetadataSchema
@@ -55,6 +58,50 @@ from metadata.video_prompt import collect_videos, videos_are_empty
 
 # Fields that must come from the listed options; a new value is kept only after confirmation.
 LISTED_ONLY_FIELD_KEYS = ('sensors', 'domain', 'use_case')
+
+# Filled in automatically on every run, so they never show or count a step.
+_AUTOMATIC_KINDS = (
+    'derived_workflow',
+    'image_mirror',
+    'accelerator_links',
+    'model_zoo_psoc_links',
+    'model_zoo_aurix_links',
+)
+
+
+def _is_asked(
+    field: FieldSpec,
+    *,
+    result: dict,
+    previous: dict,
+    review_pass: bool,
+    vision: dict | None,
+) -> bool:
+    """True when the user is asked this field, given the answers so far.
+
+    Fields the tool fills in (workflow, copied image, links, a domain or device
+    that follows the sensors or kit, and the vision defaults) are not asked.
+    """
+    if field.kind in _AUTOMATIC_KINDS:
+        return False
+    if field.kind == 'derived_algorithm':
+        return review_pass
+    if field.key in ('sensors', 'kit') and vision is not None and not review_pass:
+        return False
+    if field.key == 'domain':
+        return domains_for_sensors(_selected_list(result, previous, 'sensors')) is None
+    if field.key == 'device':
+        if vision is not None and not review_pass:
+            return False
+        kits = result.get('kit') or previous.get('kit')
+        if isinstance(kits, list) and kits and devices_for_kits(kits) is not None:
+            return False
+    return True
+
+
+def _noted(message: str) -> str:
+    """A derived-field line, with the field counter when one is active."""
+    return f'\n{field_progress_prefix()}{message}'
 
 
 def _order_metadata(metadata: dict, schema: MetadataSchema) -> dict:
@@ -154,7 +201,7 @@ def _collect_domain(
     """Select every domain the sensors map to, or prompt when a sensor has no rule."""
     allowed = domains_for_sensors(_selected_list(result, previous, 'sensors'))
     if allowed:
-        print(f'\nDomain derived from sensor(s): {", ".join(allowed)}')
+        print(_noted(f'Domain derived from sensor(s): {", ".join(allowed)}'))
         return list(allowed)
     prev_value = previous.get(field.key)
     default = prev_value if isinstance(prev_value, list) else None
@@ -215,15 +262,22 @@ def _collect_use_case(
     previous: dict,
     result: dict,
 ) -> list[str]:
-    """Offer the use cases that fit the selected applications and domains."""
+    """Offer the use cases that fit the selected applications and domains.
+
+    A use case already saved in the file stays as the current value, including
+    one that is not in the suggested list. Enter keeps it.
+    """
     applications = _selected_list(result, previous, 'application')
     domains = _selected_list(result, previous, 'domain')
     allowed = use_cases_for_context(applications, domains)
-    choices = list(allowed) if allowed is not None else list(field.choices)
+    algorithm = result.get('algorithm') or previous.get('algorithm')
+    filtered = with_project_use_case(
+        list(allowed) if allowed is not None else None,
+        algorithm,
+    )
+    choices = filtered if filtered is not None else list(field.choices)
     prev_value = previous.get(field.key)
-    default = prev_value if isinstance(prev_value, list) else None
-    if allowed is not None and default:
-        default = [item for item in default if item in allowed] or None
+    default = prev_value if isinstance(prev_value, list) and prev_value else None
     _use_case_scope(applications, domains)
     return input_choices(
         field.label,
@@ -246,7 +300,7 @@ def _collect_device(
     if isinstance(kits, list) and kits:
         derived = devices_for_kits(kits)
     if derived is not None:
-        print(f'\nDevice(s) derived from kit: {", ".join(derived)}')
+        print(_noted(f'Device(s) derived from kit: {", ".join(derived)}'))
         return derived
     default = previous.get(field.key) if isinstance(previous.get(field.key), list) else None
     return input_choices(
@@ -261,7 +315,7 @@ def _collect_workflow(result: dict, previous: dict) -> list[str]:
     types = normalize_project_types(result.get('type', previous.get('type')))
     workflows = workflow_for_types(types)
     if workflows:
-        print(f'\nWorkflow derived from project type: {", ".join(workflows)}')
+        print(_noted(f'Workflow derived from project type: {", ".join(workflows)}'))
     return workflows
 
 
@@ -275,7 +329,7 @@ def _collect_algorithm(
 ) -> str:
     derived = algorithm_from_improj(project_path, project_name)
     if not review_pass:
-        print(f'\nAlgorithm derived from {project_name}.improj ProjectType: {derived}')
+        print(_noted(f'Algorithm derived from {project_name}.improj ProjectType: {derived}'))
         return derived
     default = previous.get(field.key) if isinstance(previous.get(field.key), str) else derived
     print(f'\nDefault from {project_name}.improj ProjectType: {derived}')
@@ -370,7 +424,7 @@ def _collect_metrics(previous: dict) -> list[dict] | None:
     if not confirm('Add performance metrics? (optional — answer n to skip)'):
         return None
     previous_values = _metrics_by_label(existing if isinstance(existing, list) else None)
-    print('\nEnter a value for each metric (labels are predefined).')
+    print(_noted('Enter a value for each metric (labels are predefined).'))
     metrics: list[dict] = []
     for label in METRIC_LABELS:
         value = input_metric_value(label, default=previous_values.get(label))
@@ -462,7 +516,7 @@ def _collect_field(
 
     if field.key == 'device':
         if vision is not None and not review_pass:
-            print(f'\nDevice(s) derived from vision ProjectType: {", ".join(vision["device"])}')
+            print(_noted(f'Device(s) derived from vision ProjectType: {", ".join(vision["device"])}'))
             return list(vision['device'])
         return _collect_device(field, previous=previous, result=result)
 
@@ -504,7 +558,7 @@ def _collect_field(
                     'sensors': 'Sensor(s)',
                     'kit': 'Kit(s)',
                 }[field.key]
-                print(f'\n{label} derived from vision ProjectType: {", ".join(auto_value)}')
+                print(_noted(f'{label} derived from vision ProjectType: {", ".join(auto_value)}'))
                 return auto_value
             default = prev_value if isinstance(prev_value, list) and prev_value else auto_value
             print(f'\nVision ProjectType default: {", ".join(auto_value)}')
@@ -594,23 +648,50 @@ def collect_metadata(
     """
     previous = previous or {}
     result: dict = dict(previous)
-    for field in schema.fields:
-        if only_fields is not None and field.key not in only_fields:
-            continue
-        value = _collect_field(
-            field,
-            args=args,
-            use_cli_args=use_cli_args,
-            previous=previous,
-            result=result,
-            project_name=project_name,
-            project_path=project_path,
-            review_pass=review_pass,
-            vision_defaults=any(
-                spec.kind == 'derived_algorithm' for spec in schema.fields
-            ),
-            repo_key=schema.repo_key,
-        )
+    fields = [
+        field for field in schema.fields
+        if only_fields is None or field.key in only_fields
+    ]
+    has_vision_defaults = any(spec.kind == 'derived_algorithm' for spec in schema.fields)
+    asked_so_far = 0
+    for position, field in enumerate(fields):
+        vision = None
+        if has_vision_defaults:
+            vision = _vision_defaults_for_collect(
+                result,
+                previous,
+                project_path=project_path,
+                project_name=project_name,
+            )
+        if _is_asked(
+            field, result=result, previous=previous, review_pass=review_pass, vision=vision,
+        ):
+            asked_so_far += 1
+            remaining = sum(
+                1 for later in fields[position + 1:]
+                if _is_asked(
+                    later, result=result, previous=previous,
+                    review_pass=review_pass, vision=vision,
+                )
+            )
+            set_field_progress(field.label, asked_so_far, asked_so_far + remaining)
+        else:
+            set_field_progress(None)
+        try:
+            value = _collect_field(
+                field,
+                args=args,
+                use_cli_args=use_cli_args,
+                previous=previous,
+                result=result,
+                project_name=project_name,
+                project_path=project_path,
+                review_pass=review_pass,
+                vision_defaults=has_vision_defaults,
+                repo_key=schema.repo_key,
+            )
+        finally:
+            set_field_progress(None)
         if field.kind == 'brand':
             result['brand_image_id'] = value.brand_image_id
             result['brand_url'] = value.brand_url

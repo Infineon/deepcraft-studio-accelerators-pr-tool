@@ -73,11 +73,13 @@ def paint_magenta(text: str) -> str:
     return _paint(text, _MAGENTA)
 
 
+
+
 def colour_key_line() -> str:
     """One line under the metadata header explaining what each colour means."""
     return (
         f'  Color Code: {paint_green("green")} field names, '
-        f'{paint_cyan("cyan")} choices and options, '
+        f'{paint_cyan("cyan")} choices, options, and the field counter, '
         f'{paint_yellow("yellow")} current values and warnings, '
         f'{paint_magenta("magenta")} others.'
     )
@@ -95,9 +97,50 @@ def paint_words(text: str, words: tuple[str, ...]) -> str:
     return text
 
 
+# The field currently being collected, as ``(label, index, total)``.
+_field_progress: tuple[str, int, int] | None = None
+
+
+def set_field_progress(label: str | None, index: int = 0, total: int = 0) -> None:
+    """Mark the field whose prompt should show ``(index/total)``. ``None`` clears it."""
+    global _field_progress
+    if label is None or total <= 0:
+        _field_progress = None
+        return
+    _field_progress = (label, index, total)
+
+
+def _progress_mark() -> str:
+    """The ``(2/9)`` counter in cyan, or plain text when colour is off."""
+    if _field_progress is None:
+        return ''
+    _, index, total = _field_progress
+    return paint_cyan(f'({index}/{total})')
+
+
+def field_progress_prefix() -> str:
+    """``(2/9) `` for a derived line that stands in for the field prompt."""
+    mark = _progress_mark()
+    return f'{mark} ' if mark else ''
+
+
+def _progress_suffix(text: str) -> str:
+    if _field_progress is None:
+        return ''
+    label = _field_progress[0]
+    folded = text.casefold()
+    if folded not in (label.casefold(), f'{label}(s)'.casefold()):
+        return ''
+    return f' {_progress_mark()}'
+
+
 def field_name(text: str) -> str:
-    """Show a prompt's field name in green capitals; plain text when colour is off."""
-    return paint_green(text.upper()) if _colour_enabled() else text
+    """Show a prompt's field name in green capitals; plain text when colour is off.
+
+    The field being collected also gets its place in the form, such as ``(2/9)``.
+    """
+    shown = paint_green(text.upper()) if _colour_enabled() else text
+    return f'{shown}{_progress_suffix(text)}'
 
 
 def format_custom_choice_value(value: str) -> str:

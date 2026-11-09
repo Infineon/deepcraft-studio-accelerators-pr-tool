@@ -17,6 +17,8 @@ these functions while prompting, and again when metadata is finalized.
   which follow the sensors. A value is offered when it fits at least one
   selected domain. ``Other``, or an unknown domain, skips this filter. When
   nothing fits both the application and the domain, the domain list is shown.
+  An Object Detection project always keeps the Object Detection use case, and
+  an Image Classification project always keeps Image Classification.
   Room and setting images are not tied to a sensor, so they drop out once a
   domain is selected.
 
@@ -476,6 +478,40 @@ def use_cases_for_domains(domains: list[str]) -> list[str] | None:
         return None
     found = {use_case for key in keys for use_case in DOMAIN_USE_CASES[key]}
     from metadata.choices import USE_CASE
+    return [use_case for use_case in USE_CASE if use_case in found]
+
+
+# The use case that names the vision project. Shown even when the application
+# and domain filters would leave it out.
+PROJECT_USE_CASE = {
+    'Object Detection': 'Object Detection',
+    'Image Classification': 'Image Classification',
+}
+
+
+def project_use_case(algorithm: object) -> str | None:
+    """The use case an Object Detection or Image Classification project always offers."""
+    if not isinstance(algorithm, str) or not algorithm.strip():
+        return None
+    text = algorithm.strip()
+    if text in PROJECT_USE_CASE:
+        return PROJECT_USE_CASE[text]
+    folded = {key.casefold(): value for key, value in PROJECT_USE_CASE.items()}
+    return folded.get(text.casefold())
+
+
+def with_project_use_case(use_cases: list[str] | None, algorithm: object) -> list[str] | None:
+    """Add the vision project's own use case when a filter left it out.
+
+    ``None`` stays ``None``: the full list already contains both use cases.
+    The added use case keeps its place in the catalog order.
+    """
+    required = project_use_case(algorithm)
+    if use_cases is None or required is None or required in use_cases:
+        return use_cases
+    from metadata.choices import USE_CASE
+    found = set(use_cases)
+    found.add(required)
     return [use_case for use_case in USE_CASE if use_case in found]
 
 

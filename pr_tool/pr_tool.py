@@ -220,11 +220,26 @@ def print_project_summary(
     print(f'  README.md     : {readme_status}')
 
 
-def project_yes_label(target_repo) -> str:
-    """Yes row for the project question, naming the steps that follow."""
+def project_steps(target_repo) -> tuple[str, ...]:
+    """Steps that follow the project question.
+
+    A metadata-only target, such as model-zoo-aurix, stops after the metadata file.
+    """
     if target_repo.metadata_only:
-        return 'Yes, 1. create/review metadata.json'
-    return 'Yes, 1. create/review metadata.json, 2. submit pull request'
+        return ('Create/review metadata.json',)
+    return ('Create/review metadata.json', 'Create pull request')
+
+
+def print_next_steps(steps: tuple[str, ...]) -> None:
+    """List the steps the user is about to start."""
+    print_header('MAIN STEPS', icon=ICON_INFO)
+    for number, title in enumerate(steps, start=1):
+        print(f'  {number}. {title}')
+
+
+def print_step_header(steps: tuple[str, ...], number: int) -> None:
+    """Mark the start of one step from :func:`project_steps`, in the standard header style."""
+    print_header(f'Step {number} of {len(steps)}: {steps[number - 1]}')
 
 
 def confirm_submission(target_repo, repo_key: str, project_path: Path, project_name: str) -> None:
@@ -246,8 +261,12 @@ def confirm_submission(target_repo, repo_key: str, project_path: Path, project_n
         readme_status=_readme_status(target_repo, project_path),
     )
     print()
-    question = 'Proceed with pull request?'
-    if not confirm(question):
+    print('  Saying yes continues with these steps:')
+    print('  1. Fork and sync your repository')
+    print('  2. Push this project')
+    print('  3. Create the pull request and open it')
+    print()
+    if not confirm_menu('Proceed with pull request?', yes='Yes', no='Abort'):
         print(f'{ICON_ABORT} Aborted by user.')
         print(f'{ICON_INFO} metadata.json was saved. Nothing was pushed.')
         sys.exit(0)
@@ -700,9 +719,12 @@ try:
         readme_status=_readme_status(target_repo, project_path),
     )
     print()
+    steps = project_steps(target_repo)
+    print_next_steps(steps)
+    print()
     if not confirm_menu(
         'Proceed with this project and repository?',
-        yes=project_yes_label(target_repo),
+        yes='Yes',
         no='Abort',
     ):
         print(f'{ICON_ABORT} Aborted by user.')
@@ -711,7 +733,7 @@ try:
 
     # Metadata review / collection (after summary so the user can abort first)
     metadata_schema = get_metadata_schema(args.repo_key)
-    print_header('Metadata Collection', icon=ICON_INFO)
+    print_step_header(steps, 1)
     print(colour_key_line())
     if args.override_metadata or not metadata_path.exists():
         metadata = args.collect_metadata()
@@ -765,6 +787,7 @@ try:
         )
         sys.exit(0)
 
+    print_step_header(steps, 2)
     confirm_submission(target_repo, args.repo_key, project_path, project_name)
 
     # Create CLI early so layout checks and GitHub setup can show spinners/progress.
