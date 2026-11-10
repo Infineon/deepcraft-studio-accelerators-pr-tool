@@ -14,6 +14,7 @@ from metadata.choices import (
     PARTNER_BRANDS,
     accelerator_links,
     brand_for_image,
+    brand_url_error,
     is_known_brand_image,
     model_zoo_psoc_links,
     model_zoo_aurix_links,
@@ -41,6 +42,7 @@ from metadata.improj import (
     is_vision_algorithm,
 )
 from metadata.image_field import select_project_image
+from metadata.link_check import link_response_error
 from metadata.long_description_prompt import input_html_text
 from metadata.prompts import (
     confirm,
@@ -366,11 +368,17 @@ def _collect_custom_brand(previous: dict) -> Brand:
             break
         warn('Enter an image file name ending in .webp, for example acme.webp.')
         image_default = None
-    brand_url = input_str(
-        'Brand URL',
-        max_len=None,
-        default=url_default,
-    )
+    while True:
+        brand_url = input_str(
+            'Brand URL',
+            max_len=None,
+            default=url_default,
+        )
+        error = brand_url_error(brand_url) or link_response_error(brand_url)
+        if error is None:
+            break
+        warn(error)
+        url_default = None
     return Brand(
         label=NEW_BRAND_PARTNER_LABEL,
         brand_image_id=brand_image_id,

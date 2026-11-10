@@ -55,13 +55,17 @@ def select_project_image(
     top_sep = _field_separator()
     bottom_sep = _separator('-')
     default_normalized = normalize_project_image_name(default) if default else None
-    options = [
-        _menu_choice('1', 'Auto-select based on tags'),
-        _menu_choice('2', 'Pick from available images'),
-    ]
     if default_normalized:
+        options = [
+            _menu_choice('1', 'Auto-select based on tags'),
+            _menu_choice('2', 'Pick from available images'),
+        ]
         saved = _saved_value_block(default_normalized, options)
     else:
+        options = [
+            _menu_choice('Enter', 'Auto-select based on tags'),
+            _menu_choice('1', 'Pick from available images'),
+        ]
         saved = (
             f'{bottom_sep}\n'
             f'  Choose an option:\n'
@@ -74,25 +78,42 @@ def select_project_image(
         f'{saved}'
         f': '
     )
+
+    def by_tags() -> str:
+        tags = (
+            input_choices('Tag', available_tags, coloured_name=False)
+            if available_tags else []
+        )
+        return normalize_project_image_name(select_image(tags, names=available_images))
+
+    def from_list() -> str | None:
+        if not available_images:
+            warn('No images available in the catalog.')
+            return None
+        print(f'\n{constants.ICON_INFO} Pick an image file name from the catalog list below (.webp).\n')
+        return normalize_project_image_name(
+            input_choice('Image', available_images, coloured_name=False),
+        )
+
     while True:
         choice = input(prompt).strip()
-        if not choice and default_normalized:
-            return default_normalized
-        if choice == '1':
-            tags = (
-                input_choices('Tag', available_tags, coloured_name=False)
-                if available_tags else []
-            )
-            return normalize_project_image_name(select_image(tags, names=available_images))
-        if choice == '2':
-            if not available_images:
-                warn('No images available in the catalog.')
-                continue
-            print(f'\n{constants.ICON_INFO} Pick an image file name from the catalog list below (.webp).\n')
-            return normalize_project_image_name(
-                input_choice('Image', available_images, coloured_name=False),
-            )
         if default_normalized:
+            if not choice:
+                return default_normalized
+            if choice == '1':
+                return by_tags()
+            if choice == '2':
+                picked = from_list()
+                if picked is not None:
+                    return picked
+                continue
             warn('Press Enter to keep it, or type 1 or 2.')
-        else:
-            warn('Please type 1 or 2.')
+            continue
+        if not choice:
+            return by_tags()
+        if choice == '1':
+            picked = from_list()
+            if picked is not None:
+                return picked
+            continue
+        warn('Press Enter to auto-select, or type 1 to pick an image.')

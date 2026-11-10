@@ -195,12 +195,12 @@ def _custom_value_note(allow_custom: bool) -> str:
     return f'{_NEW_VALUE_NOTE}\n' if allow_custom else ''
 
 
-def _saved_text_rows() -> list[str]:
-    """Modify and type-new rows for a text field that already has a value."""
-    return [
-        _menu_choice(MODIFY_KEY, 'Modify the current value'),
-        _menu_choice(NEW_VALUE_KEY, 'Type a new value'),
-    ]
+def _saved_text_rows(*, allow_new: bool = True) -> list[str]:
+    """Modify row for a saved value, plus type-new when a new value is allowed."""
+    rows = [_menu_choice(MODIFY_KEY, 'Modify the current value')]
+    if allow_new:
+        rows.append(_menu_choice(NEW_VALUE_KEY, 'Type a new value'))
+    return rows
 
 
 def _queue_windows_console_text(text: str) -> bool:
@@ -292,20 +292,24 @@ def _numbers_for_saved(selected: list[str], choices: list[str]) -> str:
     return ', '.join(parts)
 
 
-def _value_after_saved_menu(raw: str, current: str) -> str | None:
+def _value_after_saved_menu(raw: str, current: str, *, allow_new: bool = True) -> str | None:
     """Read the replacement for a saved value. ``None`` means ask again.
 
-    ``1`` places *current* on the input line. ``2`` starts a blank entry.
-    Any other answer is refused, so a stray keystroke cannot replace the saved value.
+    ``1`` places *current* on the input line. ``2`` starts a blank entry when a
+    new value is allowed. Any other answer is refused, so a stray keystroke
+    cannot replace the saved value.
     """
     if raw == MODIFY_KEY:
         return input_prefilled(': ', current).strip()
-    if raw == NEW_VALUE_KEY:
+    if allow_new and raw == NEW_VALUE_KEY:
         return input(': ').strip()
-    warn(
-        'Press Enter to keep it, type 1 to modify it, '
-        'or type 2 to type a new value. Please try again.'
-    )
+    if allow_new:
+        warn(
+            'Press Enter to keep it, type 1 to modify it, '
+            'or type 2 to type a new value. Please try again.'
+        )
+    else:
+        warn('Press Enter to keep it, or type 1 to modify it. Please try again.')
     return None
 
 
@@ -516,13 +520,13 @@ def _format_domain_choices(groups: list[tuple[str, list[str]]]) -> str:
     """Domains side by side, sensors listed downward under each magenta heading.
 
     A domain with more than four sensors continues in the next columns, three or
-    four sensors each. The heading is shown on the first of those columns.
+    four sensors each. The heading is shown on the first of those columns, and
+    the sensor number starts in the same column as that heading.
     A further row of domains starts below when the next column does not fit
     the terminal width.
     """
     columns: list[list[tuple[str, str]]] = []
     index = 1
-    number_width = len(str(sum(len(items) for _, items in groups))) or 1
     for heading, items in groups:
         offset = 0
         for column_number, size in enumerate(_column_sizes(len(items))):
@@ -531,8 +535,8 @@ def _format_domain_choices(groups: list[tuple[str, list[str]]]) -> str:
             else:
                 column = [('', '')]
             for item in items[offset:offset + size]:
-                number = f'{index:>{number_width}}.'
-                column.append((f'  {number} {item}', f'  {paint_cyan(number)} {item}'))
+                number = f'{index}.'
+                column.append((f'{number} {item}', f'{paint_cyan(number)} {item}'))
                 index += 1
             offset += size
             columns.append(column)
@@ -590,7 +594,7 @@ def input_grouped_choice(
     top_sep = _field_separator()
     bottom_sep = _separator('-')
     saved = (
-        _saved_value_block(default, _saved_text_rows())
+        _saved_value_block(default, _saved_text_rows(allow_new=allow_custom))
         if default
         else f'{bottom_sep}\n'
     )
@@ -612,7 +616,11 @@ def input_grouped_choice(
         if default:
             if not raw:
                 return default
-            raw = _value_after_saved_menu(raw, _numbers_for_saved([default], choices))
+            raw = _value_after_saved_menu(
+                raw,
+                _numbers_for_saved([default], choices),
+                allow_new=allow_custom,
+            )
             if raw is None:
                 continue
         if not raw:
@@ -646,7 +654,7 @@ def input_choice(
     range_str = f'between 1 and {len(choices)}'
     top_sep = _field_separator()
     saved = (
-        _saved_value_block(default, _saved_text_rows())
+        _saved_value_block(default, _saved_text_rows(allow_new=allow_custom))
         if default
         else f'{_separator("-")}\n'
     )
@@ -667,7 +675,11 @@ def input_choice(
         if default:
             if not raw:
                 return default
-            raw = _value_after_saved_menu(raw, _numbers_for_saved([default], choices))
+            raw = _value_after_saved_menu(
+                raw,
+                _numbers_for_saved([default], choices),
+                allow_new=allow_custom,
+            )
             if raw is None:
                 continue
         if not raw:
@@ -750,7 +762,7 @@ def input_choices(
     range_str = f'between 1 and {len(choices)}'
     top_sep = _field_separator()
     saved = (
-        _saved_value_block(', '.join(default), _saved_text_rows())
+        _saved_value_block(', '.join(default), _saved_text_rows(allow_new=allow_custom))
         if default
         else f'{_separator("-")}\n'
     )
@@ -773,7 +785,11 @@ def input_choices(
         if default:
             if not raw:
                 return list(default)
-            raw = _value_after_saved_menu(raw, _numbers_for_saved(default, choices))
+            raw = _value_after_saved_menu(
+                raw,
+                _numbers_for_saved(default, choices),
+                allow_new=allow_custom,
+            )
             if raw is None:
                 continue
         if not raw:

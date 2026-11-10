@@ -13,6 +13,7 @@ from metadata.choices import (
     BRAND_IMAGE_ID,
     METRIC_LABELS,
     brand_for_image,
+    brand_url_error,
     match_choice,
     normalize_project_types,
 )
@@ -357,6 +358,13 @@ def _validate_brand(metadata: dict, spec: FieldSpec, result: MetadataValidationR
                 f'for example acme.webp'
             )
         _mark_choice(result, spec, message)
+        if brand_url_error(brand_url):
+            _mark_other(
+                result,
+                spec,
+                f'brand_url: {brand_url!r} is not an http(s) URL, '
+                f'for example https://acme.example',
+            )
         return
     expected_url = brand_for_image(brand_image_id).brand_url
     if brand_url != expected_url:

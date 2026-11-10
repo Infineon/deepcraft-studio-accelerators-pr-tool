@@ -256,8 +256,9 @@ def _choice(key: str, text: str) -> str:
 def _choose_entry_mode(*, has_current: bool = False) -> str:
     """Ask whether the text is kept, typed here, or opened in Notepad.
 
-    Returns ``keep``, ``terminal``, or ``notepad``. ``keep`` is offered only
-    when a saved value is already shown.
+    Returns ``keep``, ``terminal``, or ``notepad``. With no saved text, Enter is
+    plain text and ``1`` opens Notepad. ``keep`` is offered only when a saved
+    value is already shown.
     """
     if has_current:
         print('  Choose an option:')
@@ -266,25 +267,25 @@ def _choose_entry_mode(*, has_current: bool = False) -> str:
         print(_choice('2', 'Modify it in Notepad'))
     else:
         print('  Choose an option:')
-        print(_choice('1', 'Plain text in this terminal, without line breaks'))
-        print(_choice('2', 'Notepad for plain text, Markdown, or HTML'))
+        print(_choice('Enter', 'Plain text in this terminal, without line breaks'))
+        print(_choice('1', 'Notepad for plain text, Markdown, or HTML'))
     print(_separator('-'))
     prompt = ': '
     retry = (
         'Press Enter to keep it, or type 1 for the terminal or 2 for Notepad. Please try again.'
         if has_current
-        else 'Type 1 for the terminal or 2 for Notepad. Please try again.'
+        else 'Press Enter for plain text, or type 1 for Notepad. Please try again.'
     )
     while True:
         answer = _read_line(prompt)
         if answer is None:
             raise EOFError
         answer = answer.strip()
-        if has_current and answer == '':
-            return 'keep'
+        if answer == '':
+            return 'keep' if has_current else 'terminal'
         if answer == '1':
-            return 'terminal'
-        if answer == '2':
+            return 'terminal' if has_current else 'notepad'
+        if has_current and answer == '2':
             return 'notepad'
         _print_between_separators(retry)
 
@@ -371,10 +372,12 @@ def input_html_text(
 ) -> str:
     """Collect a long description.
 
-    The terminal accepts plain text of any length, without line breaks.
-    Notepad accepts plain text, Markdown, or HTML. Enter confirms the text.
-    ``1`` changes it in the terminal, and ``2`` opens Notepad. Markdown from
-    Notepad is stored as HTML.
+    With no saved text, Enter is plain text in the terminal and ``1`` opens
+    Notepad. A saved value is kept with Enter, replaced in the terminal with
+    ``1``, or opened in Notepad with ``2``. The terminal accepts plain text of
+    any length, without line breaks. Notepad accepts plain text, Markdown, or
+    HTML. After the text is entered, Enter confirms it. Markdown from Notepad
+    is stored as HTML.
     """
     top_sep = _field_separator()
     bottom_sep = _separator('-')

@@ -12,6 +12,7 @@ Autoselection (kit to device, type to workflow, sensor to domain) lives in
 import re
 from collections.abc import Iterable
 from dataclasses import dataclass
+from urllib.parse import urlparse
 
 from metadata.rules import (
     KIT_TO_DEVICE,
@@ -338,8 +339,22 @@ def brand_for_image(brand_image_id: str) -> Brand:
         ) from exc
 
 
+def brand_url_error(value: str) -> str | None:
+    """Return a message when *value* is not an http(s) address with a domain.
+
+    ``None`` means the address can be stored as ``brand_url``.
+    """
+    text = (value or '').strip()
+    parsed = urlparse(text)
+    host = parsed.hostname or ''
+    if parsed.scheme.lower() in ('http', 'https') and '.' in host and ' ' not in text:
+        return None
+    return 'Enter an http(s) URL, for example https://acme.example.'
+
+
 def is_known_brand_image(brand_image_id: str) -> bool:
     return brand_image_id in BRANDS_BY_IMAGE
+
 
 # ── Accelerators metadata links (fixed entries for metadata.json) ─────────
 
