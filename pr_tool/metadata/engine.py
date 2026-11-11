@@ -52,9 +52,11 @@ from metadata.prompts import (
     input_grouped_choice,
     input_metric_value,
     input_str,
+    input_suggested_text,
     set_field_progress,
     warn,
 )
+from project_layouts import title_with_spaces
 from metadata.schema import FieldSpec, MetadataSchema
 from metadata.video_prompt import collect_videos, videos_are_empty
 
@@ -533,6 +535,17 @@ def _collect_field(
         return _collect_brand(previous, fallback=fallback)
 
     if field.kind == 'text':
+        if field.key == 'title' and not cli:
+            saved = prev_value.strip() if isinstance(prev_value, str) else ''
+            if not saved:
+                suggested = title_with_spaces(project_name)
+                if suggested:
+                    return input_suggested_text(
+                        field.label,
+                        suggested,
+                        field.max_length,
+                        note='Suggested from the project folder name.',
+                    )
         return cli or input_str(
             field.label,
             field.max_length,

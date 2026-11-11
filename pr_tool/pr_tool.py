@@ -45,7 +45,7 @@ from submission_exclusions import (
 from target_repo import validate_target_repos_registry
 from utils import group_files
 from project_layouts import on_disk_names_matching
-from validation import validate_loaded_metadata, validate_project_structure
+from validation import print_metadata_notices, validate_loaded_metadata, validate_project_structure
 from metadata.schemas import validate_metadata_schemas
 
 
@@ -735,6 +735,7 @@ try:
     metadata_schema = get_metadata_schema(args.repo_key)
     print_step_header(steps, 1)
     print(colour_key_line())
+    notices: list[str] = []
     if args.override_metadata or not metadata_path.exists():
         metadata = args.collect_metadata()
     else:
@@ -752,12 +753,14 @@ try:
             ),
             project_name,
             project_path,
+            notices=notices,
         )
 
     while metadata:
         metadata = finalize_metadata(metadata, metadata_schema)
         print(f'\nProject {paint_magenta("metadata.json")} overview:')
         print(format_metadata_json(metadata, colour=True).rstrip('\n'))
+        print_metadata_notices(notices)
         answer = confirm_metadata(save_on_yes=True)
         if answer == 'yes':
             metadata_path.write_text(

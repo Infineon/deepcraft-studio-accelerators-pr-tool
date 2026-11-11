@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shutil
 import sys
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -19,7 +20,7 @@ from metadata.choices import (
 )
 from metadata.rules import workflow_for_types
 from metadata.schema import FieldSpec, MetadataSchema
-from project_layouts import get_project_layout
+from project_layouts import fixed_metadata_title, get_project_layout
 from target_repo import TargetRepo
 
 CollectMissingFn = Callable[[dict, set[str]], dict]
@@ -89,11 +90,17 @@ def validate_loaded_metadata(
     collect_missing: CollectMissingFn,
     project_name: str | None = None,
     project_path: Path | None = None,
+    notices: list[str] | None = None,
 ) -> dict:
-    """Validate loaded metadata. Optional videos stay unset until metadata is modified."""
+    """Validate loaded metadata. Optional videos stay unset until metadata is modified.
+
+    *notices* collects short messages about automatic fixes. Print them with
+    ``print_metadata_notices`` after the metadata overview.
+    """
     from metadata import confirm_metadata
 
     current = _repair_image_mirror(dict(metadata))
+    _repair_metadata_title(current, schema, project_name, notices)
     while True:
         result = validate_metadata(current, schema, project_name, project_path)
         if result.missing or result.other:
@@ -146,6 +153,48 @@ def validate_loaded_metadata(
                 current = _repair_image_mirror(current)
                 continue
         return finalize_metadata(current, schema)
+
+
+def _repair_metadata_title(
+    metadata: dict,
+    schema: MetadataSchema,
+    project_name: str | None,
+    notices: list[str] | None = None,
+) -> None:
+    """Insert spaces into a folder-name or CamelCase title before the overview."""
+    title = metadata.get('title')
+    if not isinstance(title, str):
+        return
+    spaced = fixed_metadata_title(title, project_name)
+    if spaced is None:
+        return
+    max_length = next(
+        (spec.max_length for spec in schema.fields if spec.key == 'title'),
+        None,
+    )
+    if max_length is not None and len(spaced) > max_length:
+        message = (
+            f'Title "{title.strip()}" stays as saved. '
+            f'With spaces it would pass {max_length} characters.'
+        )
+    else:
+        metadata['title'] = spaced
+        message = f'Title updated from "{title.strip()}" to "{spaced}".'
+    if notices is not None:
+        notices.append(message)
+
+
+def print_metadata_notices(notices: list[str]) -> None:
+    """Print automatic-fix notes between dash lines, then clear them."""
+    if not notices:
+        return
+    rule = '-' * shutil.get_terminal_size((80, 24)).columns
+    print()
+    print(rule)
+    for message in notices:
+        print(f'{constants.ICON_INFO} {message}')
+    print(rule)
+    notices.clear()
 
 
 def _repair_image_mirror(metadata: dict) -> dict:

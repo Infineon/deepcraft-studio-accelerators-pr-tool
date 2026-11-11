@@ -31,6 +31,36 @@ def validate_camel_case_project_name(project_name: str) -> None:
         raise ValueError(f'Project name "{project_name}" is not CamelCase')
 
 
+def title_with_spaces(name: str) -> str:
+    """Insert spaces at CamelCase boundaries. Digits and hyphens stay attached.
+
+    ``MyAudioClassifier`` becomes ``My Audio Classifier``. ``EfficientNetV2-S``
+    becomes ``Efficient Net V2-S``. ``DPS310`` stays ``DPS310``.
+    """
+    text = re.sub(r'(?<=[a-z\d])(?=[A-Z])', ' ', name.strip())
+    text = re.sub(r'(?<=[A-Z])(?=[A-Z][a-z])', ' ', text)
+    return re.sub(r' {2,}', ' ', text).strip()
+
+
+def fixed_metadata_title(title: str, project_name: str | None = None) -> str | None:
+    """Spaced form of a folder-name or CamelCase title, or None to leave it.
+
+    A title that already contains whitespace stays as written. A title is
+    updated when it equals the project folder name, or when the whole title is
+    CamelCase, and inserting spaces changes it.
+    """
+    text = title.strip()
+    if not text or any(char.isspace() for char in text):
+        return None
+    spaced = title_with_spaces(text)
+    if spaced == text:
+        return None
+    same_as_folder = bool(project_name) and text == project_name.strip()
+    if same_as_folder or _CAMEL_CASE_PATTERN.fullmatch(text):
+        return spaced
+    return None
+
+
 def validate_folder_branch_safe_project_name(project_name: str) -> None:
     """Allow names valid as a local folder and as a single Git branch segment (no spaces)."""
     if not project_name:

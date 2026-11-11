@@ -275,6 +275,47 @@ def input_prefilled(prompt: str, text: str, read: Callable[[str], str] | None = 
             readline.set_startup_hook()
 
 
+def input_suggested_text(
+    name: str,
+    suggestion: str,
+    max_len: int | None = None,
+    *,
+    note: str | None = None,
+) -> str:
+    """Ask for text with *suggestion* already on the input line.
+
+    Press Enter to keep the suggestion. On a terminal that cannot place text
+    on the input line, the suggestion is shown and Enter still keeps it.
+    """
+    suggestion = suggestion.strip()
+    top_sep = _field_separator()
+    limit_line = f' (max {max_len} characters)' if max_len is not None else ''
+    prompt = f'{top_sep}\n{field_name(name)}{limit_line}\n: '
+    if note:
+        print(f'{constants.ICON_INFO} {note}')
+    while True:
+        placed = queue_line_for_editing(suggestion)
+        if not placed:
+            print(f'  {constants.ICON_WARNING} {paint_yellow("Current value:")} {suggestion}')
+            print('  Press Enter to keep it, or type a new value.')
+        try:
+            value = input(prompt).strip()
+        finally:
+            if placed and os.name != 'nt':
+                import readline
+                readline.set_startup_hook()
+        if not value:
+            value = suggestion
+        if not value:
+            warn('Value cannot be empty, please try again.')
+            continue
+        if max_len is not None and len(value) > max_len:
+            warn(f'Value is more than {max_len} characters, please try again.')
+            suggestion = value
+            continue
+        return value
+
+
 def _numbers_for_saved(selected: list[str], choices: list[str]) -> str:
     """List numbers for a saved selection, so Modify starts from ``1, 2``.
 
