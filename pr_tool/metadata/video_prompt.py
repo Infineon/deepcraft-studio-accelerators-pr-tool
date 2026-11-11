@@ -7,7 +7,6 @@ from typing import Any
 import constants
 from metadata.prompts import (
     MODIFY_KEY,
-    NEW_VALUE_KEY,
     _field_separator,
     _menu_choice,
     _separator,
@@ -91,7 +90,6 @@ def _keep_lines(default: str) -> list[str]:
         '  Choose an option:',
         _menu_choice('Enter', 'Keep the current value'),
         _menu_choice(MODIFY_KEY, 'Modify the current value'),
-        _menu_choice(NEW_VALUE_KEY, 'Type a new value'),
     ]
 
 
@@ -102,13 +100,8 @@ def _collect_text(name: str, default: str | None, max_len: int) -> str:
         raw = _read_prompt(label, lines)
         if default and raw == MODIFY_KEY:
             raw = input_prefilled(': ', default, read=input).strip()
-        elif default and raw == NEW_VALUE_KEY:
-            raw = input(': ').strip()
         elif default and raw:
-            _warn(
-                'Press Enter to keep it, type 1 to modify it, '
-                'or type 2 to type a new value. Please try again.'
-            )
+            _warn('Press Enter to keep it, or type 1 to modify it. Please try again.')
             continue
         elif not raw and default and len(default) <= max_len:
             return default
@@ -151,13 +144,8 @@ def _collect_video_link(default: str | None = None) -> str | None:
         raw = _read_prompt(field_name('Video link'), _link_lines(default, attempts))
         if default and raw == MODIFY_KEY:
             link = input_prefilled(': ', default, read=input).strip()
-        elif default and raw == NEW_VALUE_KEY:
-            link = input(': ').strip()
         elif default and raw:
-            _warn(
-                'Press Enter to keep it, type 1 to modify it, '
-                'or type 2 to type a new value. Please try again.'
-            )
+            _warn('Press Enter to keep it, or type 1 to modify it. Please try again.')
             continue
         elif not raw and default:
             link = default

@@ -161,7 +161,7 @@ def _repair_metadata_title(
     project_name: str | None,
     notices: list[str] | None = None,
 ) -> None:
-    """Insert spaces into a folder-name or CamelCase title before the overview."""
+    """Clean a folder-style title before the overview."""
     title = metadata.get('title')
     if not isinstance(title, str):
         return

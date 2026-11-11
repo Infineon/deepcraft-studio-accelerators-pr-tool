@@ -186,7 +186,6 @@ def _menu_choice(key: str, text: str) -> str:
 
 
 MODIFY_KEY = '1'
-NEW_VALUE_KEY = '2'
 _NEW_VALUE_NOTE = 'Enter a new value only if none of the listed options fits'
 
 
@@ -195,12 +194,9 @@ def _custom_value_note(allow_custom: bool) -> str:
     return f'{_NEW_VALUE_NOTE}\n' if allow_custom else ''
 
 
-def _saved_text_rows(*, allow_new: bool = True) -> list[str]:
-    """Modify row for a saved value, plus type-new when a new value is allowed."""
-    rows = [_menu_choice(MODIFY_KEY, 'Modify the current value')]
-    if allow_new:
-        rows.append(_menu_choice(NEW_VALUE_KEY, 'Type a new value'))
-    return rows
+def _saved_text_rows() -> list[str]:
+    """The Modify row for a saved value."""
+    return [_menu_choice(MODIFY_KEY, 'Modify the current value')]
 
 
 def _queue_windows_console_text(text: str) -> bool:
@@ -333,24 +329,15 @@ def _numbers_for_saved(selected: list[str], choices: list[str]) -> str:
     return ', '.join(parts)
 
 
-def _value_after_saved_menu(raw: str, current: str, *, allow_new: bool = True) -> str | None:
+def _value_after_saved_menu(raw: str, current: str) -> str | None:
     """Read the replacement for a saved value. ``None`` means ask again.
 
-    ``1`` places *current* on the input line. ``2`` starts a blank entry when a
-    new value is allowed. Any other answer is refused, so a stray keystroke
-    cannot replace the saved value.
+    ``1`` places *current* on the input line. Any other answer is refused, so a
+    stray keystroke cannot replace the saved value.
     """
     if raw == MODIFY_KEY:
         return input_prefilled(': ', current).strip()
-    if allow_new and raw == NEW_VALUE_KEY:
-        return input(': ').strip()
-    if allow_new:
-        warn(
-            'Press Enter to keep it, type 1 to modify it, '
-            'or type 2 to type a new value. Please try again.'
-        )
-    else:
-        warn('Press Enter to keep it, or type 1 to modify it. Please try again.')
+    warn('Press Enter to keep it, or type 1 to modify it. Please try again.')
     return None
 
 
@@ -635,7 +622,7 @@ def input_grouped_choice(
     top_sep = _field_separator()
     bottom_sep = _separator('-')
     saved = (
-        _saved_value_block(default, _saved_text_rows(allow_new=allow_custom))
+        _saved_value_block(default, _saved_text_rows())
         if default
         else f'{bottom_sep}\n'
     )
@@ -660,7 +647,6 @@ def input_grouped_choice(
             raw = _value_after_saved_menu(
                 raw,
                 _numbers_for_saved([default], choices),
-                allow_new=allow_custom,
             )
             if raw is None:
                 continue
@@ -695,7 +681,7 @@ def input_choice(
     range_str = f'between 1 and {len(choices)}'
     top_sep = _field_separator()
     saved = (
-        _saved_value_block(default, _saved_text_rows(allow_new=allow_custom))
+        _saved_value_block(default, _saved_text_rows())
         if default
         else f'{_separator("-")}\n'
     )
@@ -719,7 +705,6 @@ def input_choice(
             raw = _value_after_saved_menu(
                 raw,
                 _numbers_for_saved([default], choices),
-                allow_new=allow_custom,
             )
             if raw is None:
                 continue
@@ -803,7 +788,7 @@ def input_choices(
     range_str = f'between 1 and {len(choices)}'
     top_sep = _field_separator()
     saved = (
-        _saved_value_block(', '.join(default), _saved_text_rows(allow_new=allow_custom))
+        _saved_value_block(', '.join(default), _saved_text_rows())
         if default
         else f'{_separator("-")}\n'
     )
@@ -829,7 +814,6 @@ def input_choices(
             raw = _value_after_saved_menu(
                 raw,
                 _numbers_for_saved(default, choices),
-                allow_new=allow_custom,
             )
             if raw is None:
                 continue
