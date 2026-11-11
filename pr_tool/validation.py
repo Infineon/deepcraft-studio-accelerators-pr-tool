@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shutil
 import sys
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -13,12 +14,13 @@ from metadata.choices import (
     BRAND_IMAGE_ID,
     METRIC_LABELS,
     brand_for_image,
+    brand_url_error,
     match_choice,
     normalize_project_types,
-    workflow_for_types,
 )
+from metadata.rules import workflow_for_types
 from metadata.schema import FieldSpec, MetadataSchema
-from project_layouts import get_project_layout
+from project_layouts import fixed_metadata_title, get_project_layout
 from target_repo import TargetRepo
 
 CollectMissingFn = Callable[[dict, set[str]], dict]
@@ -88,11 +90,17 @@ def validate_loaded_metadata(
     collect_missing: CollectMissingFn,
     project_name: str | None = None,
     project_path: Path | None = None,
+    notices: list[str] | None = None,
 ) -> dict:
-    """Validate loaded metadata. Optional videos stay unset until metadata is modified."""
+    """Validate loaded metadata. Optional videos stay unset until metadata is modified.
+
+    *notices* collects short messages about automatic fixes. Print them with
+    ``print_metadata_notices`` after the metadata overview.
+    """
     from metadata import confirm_metadata
 
     current = _repair_image_mirror(dict(metadata))
+    _repair_metadata_title(current, schema, project_name, notices)
     while True:
         result = validate_metadata(current, schema, project_name, project_path)
         if result.missing or result.other:
@@ -110,23 +118,25 @@ def validate_loaded_metadata(
             continue
         if result.choice_violations:
             print(
-                f'\n{constants.ICON_WARNING} Your project\'s metadata.json uses values '
-                f'that are not in this tool\'s suggested lists, which are based on the projects '
-                f'already available in the DEEPCRAFT\u2122 AI Hub:',
+                f'\n{constants.ICON_WARNING} Review needed: used value(s) are not in the '
+                f'suggested lists.',
             )
             for issue in result.choice_violations:
                 print(f'  - {issue}')
             print(
-                f'\n{constants.ICON_INFO} Common for new projects that use sensors, kits, '
-                f'devices, applications, use cases, or algorithms not yet in the AI Hub '
-                f'catalog, or if metadata.json was edited, copied, or saved before the '
-                f'lists were updated.',
+                f'\n{constants.ICON_INFO} Values not yet in the AI Hub catalog are common '
+                f'for new projects.',
             )
             print(
-                f'\n{constants.ICON_INFO} You did not see the suggested lists for these '
-                f'fields on this run. If a value was meant to match an existing one, '
-                f'choose redo (n) to browse the lists and pick from them. Choose yes (y) '
-                f'only if you intend to keep these as new values.',
+                f'  Also expected when metadata.json was edited or saved before the lists '
+                f'were updated.',
+            )
+            print(
+                f'\n{constants.ICON_INFO} Choose modify (n) to browse the lists and pick an '
+                f'existing value.',
+            )
+            print(
+                f'  Choose yes (y) only if these values are meant to be new.',
             )
             if result.choice_fields & {'sensors', 'domain'}:
                 print(
@@ -143,6 +153,48 @@ def validate_loaded_metadata(
                 current = _repair_image_mirror(current)
                 continue
         return finalize_metadata(current, schema)
+
+
+def _repair_metadata_title(
+    metadata: dict,
+    schema: MetadataSchema,
+    project_name: str | None,
+    notices: list[str] | None = None,
+) -> None:
+    """Clean a folder-style title before the overview."""
+    title = metadata.get('title')
+    if not isinstance(title, str):
+        return
+    spaced = fixed_metadata_title(title, project_name)
+    if spaced is None:
+        return
+    max_length = next(
+        (spec.max_length for spec in schema.fields if spec.key == 'title'),
+        None,
+    )
+    if max_length is not None and len(spaced) > max_length:
+        message = (
+            f'Title "{title.strip()}" stays as saved. '
+            f'With spaces it would pass {max_length} characters.'
+        )
+    else:
+        metadata['title'] = spaced
+        message = f'Title updated from "{title.strip()}" to "{spaced}".'
+    if notices is not None:
+        notices.append(message)
+
+
+def print_metadata_notices(notices: list[str]) -> None:
+    """Print automatic-fix notes between dash lines, then clear them."""
+    if not notices:
+        return
+    rule = '-' * shutil.get_terminal_size((80, 24)).columns
+    print()
+    print(rule)
+    for message in notices:
+        print(f'{constants.ICON_INFO} {message}')
+    print(rule)
+    notices.clear()
 
 
 def _repair_image_mirror(metadata: dict) -> dict:
@@ -344,11 +396,24 @@ def _validate_brand(metadata: dict, spec: FieldSpec, result: MetadataValidationR
         _mark_missing(result, spec, 'Missing or empty required field: brand_url')
         return
     if brand_image_id not in BRAND_IMAGE_ID:
-        _mark_choice(
-            result, spec,
-            f'brand_image_id: {brand_image_id!r} is not in the allowed list '
-            f'({len(BRAND_IMAGE_ID)} known brands)',
-        )
+        if brand_image_id.lower().endswith('.webp'):
+            message = (
+                f'brand_image_id: {brand_image_id!r} is a new partner, not one of the '
+                f'{len(BRAND_IMAGE_ID)} known brands'
+            )
+        else:
+            message = (
+                f'brand_image_id: {brand_image_id!r} is not an image file name, '
+                f'for example acme.webp'
+            )
+        _mark_choice(result, spec, message)
+        if brand_url_error(brand_url):
+            _mark_other(
+                result,
+                spec,
+                f'brand_url: {brand_url!r} is not an http(s) URL, '
+                f'for example https://acme.example',
+            )
         return
     expected_url = brand_for_image(brand_image_id).brand_url
     if brand_url != expected_url:

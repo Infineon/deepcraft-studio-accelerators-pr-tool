@@ -80,7 +80,20 @@ def get_available_images() -> list[str]:
     return sorted(names)
 
 
-def select_image(tags: list[str]) -> str:
+def get_tags_for_images(names: list[str]) -> list[str]:
+    """Return the sorted tags that belong to catalog images named in *names*."""
+    wanted = set(names)
+    tags: set[str] = set()
+    for img in _load_images():
+        if not isinstance(img, dict) or img.get('name') not in wanted:
+            continue
+        for tag in img.get('tags', []):
+            if isinstance(tag, str) and tag.strip():
+                tags.add(tag.strip())
+    return sorted(tags)
+
+
+def select_image(tags: list[str], *, names: list[str] | None = None) -> str:
     """Return the ``name`` of the image whose tags best match ``tags``.
 
     Tag comparison is case-insensitive. The image with the highest number of
@@ -90,6 +103,12 @@ def select_image(tags: list[str]) -> str:
     (``DEFAULT_IMAGE``) is returned instead.
     """
     images = _load_images()
+    if names is not None:
+        allowed = set(names)
+        images = [
+            img for img in images
+            if isinstance(img, dict) and img.get('name') in allowed
+        ]
     if not images:
         return DEFAULT_IMAGE
     user_tag_set = {t.strip().lower() for t in tags if isinstance(t, str) and t.strip()}
@@ -114,4 +133,5 @@ def select_image(tags: list[str]) -> str:
         print(f'{constants.ICON_WARNING} Warning: no image in the catalog shares any tag with '
               f'{sorted(user_tag_set)}; falling back to default image "{DEFAULT_IMAGE}".')
         return DEFAULT_IMAGE
+    print(f'{constants.ICON_INFO} Image chosen from tags {sorted(user_tag_set)}: {best_name}')
     return best_name

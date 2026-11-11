@@ -36,15 +36,15 @@ GitHub auth, fork sync, branching, push, and opens the PR in your browser.
 | **`.gitignore`** | Ignores local scratch, virtual environments, and OS artefacts. |
 | **`scripts/parse_master_json.py`** | Fetches the DEEPCRAFT AI Hub `master.json` (or reads a local copy) and prints unique catalog values for `domain`, `application`, `use_case`, `kit`, `device`, and brand fields. Use the output to update `metadata/choices.py` manually. |
 | **`pr_tool/README.md`** | End-user documentation: step-by-step usage, metadata behaviour, CLI flags, examples, troubleshooting. |
-| **`pr_tool/pr_tool.py`** | Main entry point. Orchestrates project summary, metadata collection/review, git/gh setup, fork sync, sparse clone, chunked push, and PR creation. Validates registries at import time. |
+| **`pr_tool/pr_comment.py`** | Reviewer comment posted after a new pull request is created, including the GitHub post. `REVIEW_NOTES` lists the checks: new catalog entries, a new partner, and a new project image. Add a function there to flag something else. |
 | **`pr_tool/updater.py`** | On startup, updates a non-git copy of the tool to the latest `main` commit (skipped for git checkouts, `--no-update`, or when `BASE_REPO_OWNER` is not `Infineon`). |
 | **`pr_tool/cli.py`** | `Cli` class wrapping `git` and `gh` subprocess calls. Resolves bundled vs system `gh`, enforces minimum git version, handles auth refresh, and prints commands when `--verbose` is set. |
 | **`pr_tool/constants.py`** | Shared settings: `TARGET_REPOS` registry, git/GitHub defaults, UI icons, column padding for choice prompts. |
 | **`pr_tool/target_repo.py`** | `TargetRepo` dataclass (repo name, PR title template, layout key, ignored push dirs) and registry validation against known layouts. |
-| **`pr_tool/project_layouts.py`** | Project folder validators registered in `LAYOUTS` (accelerators, model-zoo, and the shared `metadata_only_layout`). |
+| **`pr_tool/project_layouts.py`** | Project folder validators registered in `LAYOUTS` (accelerators, model-zoo, and the shared `metadata_only_layout`). Also `title_with_spaces()` and `fixed_metadata_title()`, which turn a CamelCase, snake_case, or kebab-case folder name into a spaced title. |
 | **`pr_tool/submission_exclusions.py`** | Git/Python paths excluded from layout checks and PR push (`pyvenv.cfg` / `conda-meta/` detection). |
 | **`pr_tool/input.py`** | Argparse setup, `--repo` / `--path` / metadata CLI flags, and `Input.collect_metadata()` delegating to the metadata engine. |
-| **`pr_tool/validation.py`** | Validates project layout and loaded `metadata.json` (missing fields, values outside AI Hub suggested lists with optional continue, derived-field repair). |
+| **`pr_tool/validation.py`** | Validates project layout and loaded `metadata.json` (missing fields, values outside AI Hub suggested lists with optional continue, derived-field repair). An identifier-style title is cleaned when that still fits in 40 characters: CamelCase gains spaces (`ArcFace` → `Arc Face`), and snake_case or kebab-case separators become spaces (`keyword_detection` → `Keyword Detection`), including a `-` or `_` at either end. |
 | **`pr_tool/image_selector.py`** | Loads `images.json`, exposes available tags/images, and picks the best tag overlap for auto-selection (fallback `deepcraft.webp`). |
 | **`pr_tool/images.json`** | Shipped catalog of `{name, tags}` entries used for thumbnail/main image selection. |
 | **`pr_tool/utils.py`** | `group_files()` splits diffs into push chunks under GitHub's ~2 GB and ~2,500-file limits; readonly cleanup helper for git scratch removal. |
@@ -53,16 +53,18 @@ GitHub auth, fork sync, branching, push, and opens the PR in your browser.
 | **`pr_tool/metadata/__init__.py`** | Public metadata API: `collect_metadata`, `finalize_metadata`, `format_metadata_json`, `get_metadata_schema`. |
 | **`pr_tool/metadata/schema.py`** | `FieldSpec` and `MetadataSchema` types, field kinds, CLI flag registration per field. |
 | **`pr_tool/metadata/schemas.py`** | Per-repo metadata schemas (`SCHEMAS`). Defines field order and composition for accelerators, model-zoo-psoc, and model-zoo-aurix. |
-| **`pr_tool/metadata/choices.py`** | Suggested values (sensors, domain, kit, …), brand definitions, kit→device and type→workflow mappings, and link builders for each repo. |
-| **`pr_tool/metadata/engine.py`** | Walks the schema to collect metadata interactively: derived device/workflow/algorithm, brand handling, links, and schema-ordered output. |
+| **`pr_tool/metadata/choices.py`** | Suggested values (sensors, domain, kit, …), brand definitions, and link builders for each repo. |
+| **`pr_tool/metadata/rules.py`** | Autoselection rules: kit→device, type→workflow, sensor→domain, application→use case and project image, and domain→use case and project image. Add a rule by extending the mapping in this file. |
+| **`pr_tool/metadata/engine.py`** | Walks the schema to collect metadata interactively: derived device/workflow/algorithm, brand handling, links, the suggested project title, and schema-ordered output. |
 | **`pr_tool/metadata/improj.py`** | Reads `{Project}.improj` `<ProjectType>` and maps it to `algorithm` (and vision defaults for object detection / image classification). |
-| **`pr_tool/metadata/prompts.py`** | Interactive prompts (`input_str`, `input_choice`, `input_choices`, confirmations) including custom-value title-casing. |
-| **`pr_tool/metadata/long_description_prompt.py`** | Long-description prompt. The terminal takes plain text of any length, without line breaks. Notepad takes plain text, Markdown, or HTML, and opens with a short instruction note labeled [ INSTRUCTIONS ]. It ends with [ LONG DESCRIPTION ] - Write it below, and the description is written on the following lines. Enter confirms the text, `1` changes it in the terminal, and `2` opens Notepad. |
+| **`pr_tool/metadata/prompts.py`** | Interactive prompts (`input_str`, `input_choice`, `input_choices`, confirmations) including custom-value title-casing. A new project title starts from the folder name with spaces inserted, already on the input line. A saved value lists Enter, which keeps it, then `1` to modify it in place. On a numbered list, Modify places the list numbers on the input line. Any other answer is refused. |
+| **`pr_tool/metadata/long_description_prompt.py`** | Long-description prompt. The terminal takes plain text of any length, without line breaks. Notepad takes plain text, Markdown, or HTML, and opens with a short instruction note labeled [ INSTRUCTIONS ]. It ends with [ LONG DESCRIPTION ] - Write it below, and the description is written on the following lines. With no saved text, Enter is plain text and `1` opens Notepad. After the text is entered, Enter confirms it, `1` changes it in the terminal, and `2` opens Notepad. |
 | **`pr_tool/metadata/long_description.py`** | Keeps plain long-description text as-is; converts Markdown to HTML; validates Markdown and text HTML (allowed tags, matching tags, safe links; no images/scripts). |
 | **`pr_tool/metadata/video_link.py`** | Accepts a single video URL (YouTube, Vimeo, Dailymotion, Wistia, Loom, or a direct video file). Rejects playlists, collections, channels, and regular web pages. Links with a start time (such as `?t=42`) are accepted. |
-| **`pr_tool/metadata/video_prompt.py`** | Optional video prompt for one video: title (max 40 characters), description (max 300 characters), and link. Press Enter to leave the field empty, or type `1` to add a video. A saved video is kept with Enter, `1` modifies it, and `2` removes it. Three attempts on the link, empty or rejected, return to the Videos prompt. An empty `videos` value is left out of `metadata.json`. |
+| **`pr_tool/metadata/link_check.py`** | Requests a brand URL or video link. A working address prints "Link approved". A HEAD request is retried with GET when the server rejects HEAD. YouTube and Vimeo video links are checked through their oEmbed endpoints, since YouTube answers HTTP 200 even for a missing video. A video that exists prints "Video approved". |
+| **`pr_tool/metadata/video_prompt.py`** | Optional video prompt for one video: title (max 40 characters), description (max 300 characters), and link. The heading says to add a video link. Press Enter when there is no video to add, or type `1` to add a video. A saved video is kept with Enter, `1` modifies it, and `2` removes it. A saved title, description, or link is kept with Enter, and `1` modifies it. Three attempts on the link, empty, rejected, or not responding, return to the Videos prompt. YouTube and Vimeo links are checked against the provider. A missing video is refused, and a video that exists prints "Video approved". Other video hosts print "Link approved". An empty `videos` value is left out of `metadata.json`. |
 | **`pr_tool/metadata/format.py`** | Pretty-prints `metadata.json` with keys in schema order. |
-| **`pr_tool/metadata/image_field.py`** | Interactive and CLI-driven project image selection (`--image`, `--tag`, or pick from catalog). |
+| **`pr_tool/metadata/image_field.py`** | Interactive and CLI-driven project image selection (`--image`, `--tag`, or pick from catalog). With no saved image, Enter auto-selects from tags and `1` picks from the catalog. |
 
 At startup, `pr_tool.py` checks that **`TARGET_REPOS` keys match `SCHEMAS`**
 and that each target uses a registered **project layout**.
@@ -78,7 +80,9 @@ metadata/schemas.py       SCHEMAS        (same key → metadata.json fields)
        ↓
 project_layouts.py        LAYOUTS        (layout name → folder rules)
 submission_exclusions.py  filters        (git/Python artefacts → layout + push)
-metadata/choices.py       tuples         (prompt suggestions + derivations)
+metadata/choices.py       tuples         (prompt suggestions)
+metadata/rules.py         mappings       (kit→device, type→workflow, sensor→domain)
+pr_comment.py             REVIEW_NOTES   (new values flagged on the pull request)
 ```
 
 `submission_exclusions.py` is separate from `project_layouts.py` and
@@ -93,6 +97,7 @@ folder name.
 | New `--repo` target | `constants.py`, `metadata/schemas.py`, `project_layouts.py` |
 | Metadata fields / order | `metadata/schemas.py` |
 | Choice lists, brands, links | `metadata/choices.py` |
+| Autoselection rules | `metadata/rules.py` |
 | Sync lists from AI Hub | `scripts/parse_master_json.py` → copy into `choices.py` |
 | Folder / name rules | `project_layouts.py` |
 | Git/Python paths excluded from push | `submission_exclusions.py` |
@@ -101,6 +106,7 @@ folder name.
 | Video link checks | `metadata/video_link.py` |
 | Algorithm from `.improj` | `metadata/improj.py`, `engine.py` |
 | Git / PR flow | `pr_tool.py`, `cli.py` |
+| Reviewer comment after a new PR | `pr_comment.py` (`REVIEW_NOTES`) |
 
 ### Add a target repository
 
@@ -126,13 +132,13 @@ Edit `metadata/schemas.py`. Fields are `FieldSpec(key, label, kind, …)`; **tup
 | `url` | Single URL |
 | `image` / `image_mirror` | Thumbnail; mirror sets `main_image_id` |
 | `brand` | Sets `brand_image_id` + `brand_url` |
-| `videos` | Optional list of one `{title, description, link}` (single video URL; no playlists or regular pages). Press Enter to leave the field empty, or type `1` to add a video. A saved video is kept with Enter, `1` modifies it, and `2` removes it. The title is at most 40 characters and the description at most 300. An empty value is omitted from `metadata.json`. Stored after `brand_url` and before `links`. |
+| `videos` | Optional list of one `{title, description, link}` (single video URL; no playlists or regular pages). The heading says to add a video link. Press Enter when there is no video to add, or type `1` to add a video. A saved video is kept with Enter, `1` modifies it, and `2` removes it. A saved title, description, or link is kept with Enter, and `1` modifies it. The title is at most 40 characters and the description at most 300. An empty value is omitted from `metadata.json`. Stored after `brand_url` and before `links`. |
 | `accelerator_links`, `model_zoo_psoc_links`, `model_zoo_aurix_links` | Auto link arrays |
 | `metrics` | Optional labelled metrics (model-zoo) |
 
 ### Update choice lists
 
-Edit tuples in `metadata/choices.py`, or run `python scripts/parse_master_json.py` to list current AI Hub values and copy what you need. Update `KIT_TO_DEVICE` when adding kits; add `Brand` entries for new partners. AURIX&trade; kit and device prompts use `AURIX_KIT` and `AURIX_DEVICE`, taken from published `deepcraft-model-zoo-for-aurix` metadata rather than `master.json`.
+Edit tuples in `metadata/choices.py`, or run `python scripts/parse_master_json.py` to list current AI Hub values and copy what you need. Autoselection lives in `metadata/rules.py`: update `KIT_TO_DEVICE` when adding kits, `TYPE_TO_WORKFLOW` for a new project type, and `SENSOR_TO_DOMAIN` when a sensor should set the domain. `APPLICATION_USE_CASES` and `APPLICATION_IMAGES` limit the use-case and project-image lists to the selected application. `DOMAIN_USE_CASES` and `DOMAIN_IMAGES` limit the use-case list and the project-image names and tags again to the selected domain. Add `Brand` entries in `choices.py` for new partners. AURIX&trade; kit and device prompts use `AURIX_KIT` and `AURIX_DEVICE`, taken from published `deepcraft-model-zoo-for-aurix` metadata rather than `master.json`.
 
 ### Add a project layout
 

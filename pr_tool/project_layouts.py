@@ -31,6 +31,51 @@ def validate_camel_case_project_name(project_name: str) -> None:
         raise ValueError(f'Project name "{project_name}" is not CamelCase')
 
 
+def title_with_spaces(name: str) -> str:
+    """Turn a folder-style name into a readable title.
+
+    CamelCase boundaries gain spaces. ``_``, ``-``, and a ``.`` between words
+    become spaces. A ``-`` or ``_`` at the start or end is removed. A word that
+    is entirely lowercase gains a capital first letter. Existing capitals stay,
+    so ``HTML``, ``PSOC``, and ``ATV`` are kept. ``DPS310`` and a plain word
+    such as ``arcface`` stay as written.
+    """
+    original = name.strip()
+    text = original.strip('_-')
+    if not text:
+        return original
+    text = re.sub(r'(?<=[A-Za-z0-9])[_-]+(?=[A-Za-z0-9])', ' ', text)
+    text = re.sub(r'(?<=[A-Za-z])\.+(?=[A-Za-z])', ' ', text)
+    text = re.sub(r'(?<=[a-z\d])(?=[A-Z])', ' ', text)
+    text = re.sub(r'(?<=[A-Z])(?=[A-Z][a-z])', ' ', text)
+    text = re.sub(r' {2,}', ' ', text).strip(' _-')
+    if not text or text == original:
+        return text
+    words = [
+        word[:1].upper() + word[1:] if word.islower() else word
+        for word in text.split(' ')
+    ]
+    return ' '.join(words)
+
+
+def fixed_metadata_title(title: str, project_name: str | None = None) -> str | None:
+    """Cleaned form of an identifier-style title, or None to leave it.
+
+    CamelCase, snake_case, kebab-case, and dotted words are cleaned, including
+    when the title is the project folder name. A title that already contains
+    whitespace stays as written. ``project_name`` is the folder name passed by
+    the loader; cleaning does not require the title to match it.
+    """
+    del project_name
+    text = title.strip()
+    if not text or any(char.isspace() for char in text):
+        return None
+    spaced = title_with_spaces(text)
+    if spaced == text:
+        return None
+    return spaced
+
+
 def validate_folder_branch_safe_project_name(project_name: str) -> None:
     """Allow names valid as a local folder and as a single Git branch segment (no spaces)."""
     if not project_name:

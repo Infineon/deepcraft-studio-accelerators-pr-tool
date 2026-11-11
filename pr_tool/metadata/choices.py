@@ -4,11 +4,22 @@ Domain, application, use case, kit, device, and brand lists are derived from
 the DEEPCRAFT AI Hub catalog (``https://deepcraft.infineon.com/master.json``).
 Choosing a **brand** sets ``brand_image_id`` and ``brand_url`` together.
 Re-run ``scripts/parse_master_json.py`` to refresh when the hub is updated.
+
+Autoselection (kit to device, type to workflow, sensor to domain) lives in
+``metadata.rules``. The kit and type helpers are re-exported here.
 """
 
 import re
 from collections.abc import Iterable
 from dataclasses import dataclass
+from urllib.parse import urlparse
+
+from metadata.rules import (
+    KIT_TO_DEVICE,
+    TYPE_TO_WORKFLOW,
+    devices_for_kits,
+    workflow_for_types,
+)
 
 # Symbols users often omit or mistype when entering kit/device names.
 _TRADEMARK_CHARS = ('\u2122', '\u00ae', '\u2120')  # ™ ® ℠
@@ -79,6 +90,7 @@ SENSORS = (
     'Accelerometer',
     'Gyroscope',
     'Magnetometer',
+    'Hall Sensor',
     'Vibration',
     'Radar',
     'Capacitive Sensing',
@@ -88,12 +100,15 @@ SENSORS = (
     'Power',
     'Temperature',
     'Pressure',
+    'DPS',
     'Humidity',
     'Gas',
     'Torque',
     'RPM',
-    'DPS',
     'Speed',
+    'UWB',
+    'WiFi',
+    'Bluetooth',
     'Other',
 )
 
@@ -215,6 +230,8 @@ KIT = (
     'PSOC\u2122 C3 Motor Control Kit',
     'PSOC\u2122 Edge AI Kit',
     'PSOC\u2122 Edge Eval Kit',
+    'AIROC\u2122 UWB TSL100 Engineering Sample Kit',
+    'XENSIV\u2122 TLE493D-W2B6 MS2GO',
 )
 
 DEVICE = (
@@ -227,31 +244,13 @@ DEVICE = (
     'PSOC\u2122 6',
     'PSOC\u2122 C3',
     'PSOC\u2122 Edge',
+    'AIROC\u2122 UWB TSL100',
+    'XENSIV\u2122 TLE493D',
 )
 
 PROJECT_TYPE = ('Model Development', 'Model Deployment')
 
 WORKFLOW = ('ML Development', 'ML Deployment')
-
-TYPE_TO_WORKFLOW = {
-    'Model Development': 'ML Development',
-    'Model Deployment': 'ML Deployment',
-}
-
-# Each known kit maps to exactly one device (derived during metadata collection).
-KIT_TO_DEVICE: dict[str, str] = {
-    'AURIX\u2122 KIT_A2G_TC375_LITE': 'AURIX\u2122 TC3x',
-    'AURIX\u2122 KIT_A3G_TC4D7_LITE': 'AURIX\u2122 TC4x',
-    'AURIX\u2122 TC4x STD Triboard': 'AURIX\u2122 TC4x',
-    'TRAVEO\u2122 T2G Body EntryLite Kit KIT_T2G-B-E_LITE': 'TRAVEO\u2122 T2G body entry',
-    'XENSIV\u2122 KIT_CSK_BGT60TR13C': 'XENSIV\u2122 Radar BGT60TR13C',
-    'PSOC\u2122 4100S Max Pioneer Kit': 'PSOC\u2122 4',
-    'PSOC\u2122 6 AI Kit': 'PSOC\u2122 6',
-    'PSOC\u2122 6 Pioneer Kit': 'PSOC\u2122 6',
-    'PSOC\u2122 C3 Motor Control Kit': 'PSOC\u2122 C3',
-    'PSOC\u2122 Edge AI Kit': 'PSOC\u2122 Edge',
-    'PSOC\u2122 Edge Eval Kit': 'PSOC\u2122 Edge',
-}
 
 
 def normalize_project_types(value: str | list[str] | None) -> list[str]:
@@ -271,27 +270,6 @@ def normalize_project_types(value: str | list[str] | None) -> list[str]:
                 expanded.append(part)
     return expanded
 
-
-def workflow_for_types(types: list[str]) -> list[str]:
-    """Map selected project type(s) to workflow value(s), preserving order."""
-    workflows: list[str] = []
-    for project_type in types:
-        workflow = TYPE_TO_WORKFLOW.get(project_type)
-        if workflow and workflow not in workflows:
-            workflows.append(workflow)
-    return workflows
-
-
-def devices_for_kits(kits: list[str]) -> list[str] | None:
-    """Return devices for known kits; ``None`` when any kit is custom."""
-    devices: list[str] = []
-    for kit in kits:
-        device = KIT_TO_DEVICE.get(kit)
-        if device is None:
-            return None
-        if device not in devices:
-            devices.append(device)
-    return devices
 
 # Predefined metric labels for model-zoo-psoc metadata.json (values are prompted).
 METRIC_LABELS = (
@@ -361,8 +339,22 @@ def brand_for_image(brand_image_id: str) -> Brand:
         ) from exc
 
 
+def brand_url_error(value: str) -> str | None:
+    """Return a message when *value* is not an http(s) address with a domain.
+
+    ``None`` means the address can be stored as ``brand_url``.
+    """
+    text = (value or '').strip()
+    parsed = urlparse(text)
+    host = parsed.hostname or ''
+    if parsed.scheme.lower() in ('http', 'https') and '.' in host and ' ' not in text:
+        return None
+    return 'Enter an http(s) URL, for example https://acme.example.'
+
+
 def is_known_brand_image(brand_image_id: str) -> bool:
     return brand_image_id in BRANDS_BY_IMAGE
+
 
 # ── Accelerators metadata links (fixed entries for metadata.json) ─────────
 

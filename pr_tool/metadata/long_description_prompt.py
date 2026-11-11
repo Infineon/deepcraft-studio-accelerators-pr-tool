@@ -3,7 +3,6 @@
 import os
 import shlex
 import subprocess
-import sys
 import tempfile
 from pathlib import Path
 
@@ -14,13 +13,20 @@ from metadata.long_description import (
     normalize_long_description,
     validate_long_description,
 )
-from metadata.prompts import _separator
+from metadata.prompts import (
+    _field_separator,
+    _menu_choice,
+    _separator,
+    field_name,
+    paint_yellow,
+    queue_line_for_editing as _queue_line_for_editing,
+)
 
 
 def _print_between_separators(message: str) -> None:
     """Print a message between a ===== line and a ----- line."""
     print(_separator('='))
-    print(f'{constants.ICON_WARNING} {message}')
+    print(paint_yellow(f'{constants.ICON_WARNING} {message}'))
     print(_separator('-'))
 
 
@@ -212,63 +218,6 @@ def _read_line(prompt: str) -> str | None:
         raise
 
 
-def _queue_windows_console_text(text: str) -> bool:
-    """Type *text* into the Windows console so the next ``input()`` can edit it."""
-    import ctypes
-    from ctypes import wintypes
-
-    class _KeyEvent(ctypes.Structure):
-        _fields_ = [
-            ('bKeyDown', wintypes.BOOL),
-            ('wRepeatCount', wintypes.WORD),
-            ('wVirtualKeyCode', wintypes.WORD),
-            ('wVirtualScanCode', wintypes.WORD),
-            ('uChar', wintypes.WCHAR),
-            ('dwControlKeyState', wintypes.DWORD),
-        ]
-
-    class _Event(ctypes.Union):
-        _fields_ = [('KeyEvent', _KeyEvent)]
-
-    class _InputRecord(ctypes.Structure):
-        _fields_ = [('EventType', wintypes.WORD), ('Event', _Event)]
-
-    kernel32 = ctypes.windll.kernel32
-    handle = kernel32.GetStdHandle(-10)
-    mode = wintypes.DWORD()
-    if not kernel32.GetConsoleMode(handle, ctypes.byref(mode)):
-        return False
-    units = text.encode('utf-16-le')
-    chars = [units[i:i + 2].decode('utf-16-le', 'surrogatepass') for i in range(0, len(units), 2)]
-    records = (_InputRecord * (len(chars) * 2))()
-    for index, char in enumerate(chars):
-        for offset, key_down in ((0, True), (1, False)):
-            record = records[index * 2 + offset]
-            record.EventType = 0x0001
-            record.Event.KeyEvent.bKeyDown = key_down
-            record.Event.KeyEvent.wRepeatCount = 1
-            record.Event.KeyEvent.uChar = char
-    written = wintypes.DWORD()
-    ok = kernel32.WriteConsoleInputW(handle, records, len(records), ctypes.byref(written))
-    return bool(ok) and written.value == len(records)
-
-
-def _queue_line_for_editing(text: str) -> bool:
-    """Put *text* on the next input line. Return False when the terminal cannot do it."""
-    if not text:
-        return False
-    try:
-        if not sys.stdin.isatty():
-            return False
-        if os.name == 'nt':
-            return _queue_windows_console_text(text)
-        import readline
-    except (ImportError, OSError, AttributeError, ValueError):
-        return False
-    readline.set_startup_hook(lambda: readline.insert_text(text))
-    return True
-
-
 def _read_prefilled(prompt: str, text: str) -> tuple[str | None, bool]:
     """Read a line that starts with *text*. Also returns whether *text* was placed."""
     prefilled = _queue_line_for_editing(text)
@@ -301,15 +250,15 @@ def _load_from_editor(lines: list[str]) -> list[str] | None:
 
 def _choice(key: str, text: str) -> str:
     """One menu row. Numbers use the same ``1.`` form as the other prompts."""
-    label = 'Enter' if key == 'Enter' else f'{key}.'
-    return f'  {label}'.ljust(12) + text
+    return _menu_choice(key, text)
 
 
 def _choose_entry_mode(*, has_current: bool = False) -> str:
     """Ask whether the text is kept, typed here, or opened in Notepad.
 
-    Returns ``keep``, ``terminal``, or ``notepad``. ``keep`` is offered only
-    when a saved value is already shown.
+    Returns ``keep``, ``terminal``, or ``notepad``. With no saved text, Enter is
+    plain text and ``1`` opens Notepad. ``keep`` is offered only when a saved
+    value is already shown.
     """
     if has_current:
         print('  Choose an option:')
@@ -318,25 +267,25 @@ def _choose_entry_mode(*, has_current: bool = False) -> str:
         print(_choice('2', 'Modify it in Notepad'))
     else:
         print('  Choose an option:')
-        print(_choice('1', 'Plain text in this terminal, without line breaks'))
-        print(_choice('2', 'Notepad for plain text, Markdown, or HTML'))
+        print(_choice('Enter', 'Plain text in this terminal, without line breaks'))
+        print(_choice('1', 'Notepad for plain text, Markdown, or HTML'))
     print(_separator('-'))
     prompt = ': '
     retry = (
         'Press Enter to keep it, or type 1 for the terminal or 2 for Notepad. Please try again.'
         if has_current
-        else 'Type 1 for the terminal or 2 for Notepad. Please try again.'
+        else 'Press Enter for plain text, or type 1 for Notepad. Please try again.'
     )
     while True:
         answer = _read_line(prompt)
         if answer is None:
             raise EOFError
         answer = answer.strip()
-        if has_current and answer == '':
-            return 'keep'
+        if answer == '':
+            return 'keep' if has_current else 'terminal'
         if answer == '1':
-            return 'terminal'
-        if answer == '2':
+            return 'terminal' if has_current else 'notepad'
+        if has_current and answer == '2':
             return 'notepad'
         _print_between_separators(retry)
 
@@ -423,18 +372,20 @@ def input_html_text(
 ) -> str:
     """Collect a long description.
 
-    The terminal accepts plain text of any length, without line breaks.
-    Notepad accepts plain text, Markdown, or HTML. Enter confirms the text.
-    ``1`` changes it in the terminal, and ``2`` opens Notepad. Markdown from
-    Notepad is stored as HTML.
+    With no saved text, Enter is plain text in the terminal and ``1`` opens
+    Notepad. A saved value is kept with Enter, replaced in the terminal with
+    ``1``, or opened in Notepad with ``2``. The terminal accepts plain text of
+    any length, without line breaks. Notepad accepts plain text, Markdown, or
+    HTML. After the text is entered, Enter confirms it. Markdown from Notepad
+    is stored as HTML.
     """
-    top_sep = _separator('=')
+    top_sep = _field_separator()
     bottom_sep = _separator('-')
     current_block = ''
     if default:
         shown = '\n'.join(f'  {line}' for line in default.splitlines() or [''])
         current_block = (
-            f'  Current value:\n'
+            f'  {constants.ICON_WARNING} {paint_yellow("Current value:")}\n'
             f'{shown}\n'
             f'{bottom_sep}\n'
         )
@@ -445,7 +396,7 @@ def input_html_text(
         limit_line = f' ({note})'
     print(
         f'{top_sep}\n'
-        f'{name}{limit_line}\n'
+        f'{field_name(name)}{limit_line}\n'
         f'{bottom_sep}\n'
         f'{current_block}'.rstrip('\n')
     )

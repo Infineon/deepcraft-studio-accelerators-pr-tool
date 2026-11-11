@@ -30,11 +30,14 @@ from constants import (
     ICON_WARNING,
     DEEPCRAFT,
     MAIN_BRANCH,
+    TARGET_HIGHLIGHT_WORDS,
     TARGET_REPOS,
 )
 from input import Input, confirm
 from updater import ensure_latest_version
 from metadata import confirm_metadata, finalize_metadata, format_metadata_json, get_metadata_schema
+from pr_comment import _post_review_comment
+from metadata.prompts import colour_key_line, confirm_menu, paint_magenta, paint_words
 from submission_exclusions import (
     build_submission_exclude_pathspecs,
     filter_submission_paths,
@@ -42,7 +45,7 @@ from submission_exclusions import (
 from target_repo import validate_target_repos_registry
 from utils import group_files
 from project_layouts import on_disk_names_matching
-from validation import validate_loaded_metadata, validate_project_structure
+from validation import print_metadata_notices, validate_loaded_metadata, validate_project_structure
 from metadata.schemas import validate_metadata_schemas
 
 
@@ -185,6 +188,89 @@ def print_header(title: str, *, icon: str = '') -> None:
     print(f'\n{sep}')
     print(f'  {label}')
     print(sep)
+
+
+def _readme_status(target_repo, project_path: Path) -> str:
+    found = (project_path / 'README.md').is_file()
+    if target_repo.metadata_only:
+        return f'{ICON_SUCCESS} found' if found else f'{ICON_INFO} optional for this target'
+    return f'{ICON_SUCCESS} found' if found else f'{ICON_WARNING} missing (required)'
+
+
+def print_project_summary(
+    *,
+    target_repo,
+    repo_key: str,
+    project_path: Path,
+    project_name: str,
+    metadata_status: str,
+    readme_status: str,
+) -> None:
+    """Print the target, path, and branch that a submission will use."""
+    print(f'  Target        : {paint_words(target_repo.label, TARGET_HIGHLIGHT_WORDS)} ({repo_key})')
+    print(f'  Repository    : {target_repo.base_repo}')
+    print(f'  Project path  : {project_path}')
+    print(f'  Project name  : {project_name}')
+    if target_repo.metadata_only:
+        print('  Output        : metadata.json only (no pull request)')
+    else:
+        print(f'  Branch        : {project_name}')
+    print(f'  Project layout: {target_repo.project_layout}')
+    print(f'  metadata.json : {metadata_status}')
+    print(f'  README.md     : {readme_status}')
+
+
+def project_steps(target_repo) -> tuple[str, ...]:
+    """Steps that follow the project question.
+
+    A metadata-only target, such as model-zoo-aurix, stops after the metadata file.
+    """
+    if target_repo.metadata_only:
+        return ('Create/review metadata.json',)
+    return ('Create/review metadata.json', 'Create pull request')
+
+
+def print_next_steps(steps: tuple[str, ...]) -> None:
+    """List the steps the user is about to start."""
+    print_header('MAIN STEPS', icon=ICON_INFO)
+    for number, title in enumerate(steps, start=1):
+        print(f'  {number}. {title}')
+
+
+def print_step_header(steps: tuple[str, ...], number: int) -> None:
+    """Mark the start of one step from :func:`project_steps`, in the standard header style."""
+    print_header(f'Step {number} of {len(steps)}: {steps[number - 1]}')
+
+
+def confirm_submission(target_repo, repo_key: str, project_path: Path, project_name: str) -> None:
+    """Show what will be submitted and stop if the user declines.
+
+    Only for targets that push and open a pull request. metadata.json is already
+    saved when this runs. Declining leaves that file in place and does not fork,
+    push, or open a pull request.
+    """
+    print_header('Submission summary', icon=ICON_INFO)
+    print(f'{ICON_SUCCESS} metadata.json has been saved. Review what will be submitted:')
+    print()
+    print_project_summary(
+        target_repo=target_repo,
+        repo_key=repo_key,
+        project_path=project_path,
+        project_name=project_name,
+        metadata_status=f'{ICON_SUCCESS} saved',
+        readme_status=_readme_status(target_repo, project_path),
+    )
+    print()
+    print('  Saying yes continues with these steps:')
+    print('  1. Fork and sync your repository')
+    print('  2. Push this project')
+    print('  3. Create the pull request and open it')
+    print()
+    if not confirm_menu('Proceed with pull request?', yes='Yes', no='Abort'):
+        print(f'{ICON_ABORT} Aborted by user.')
+        print(f'{ICON_INFO} metadata.json was saved. Nothing was pushed.')
+        sys.exit(0)
+    print()
 
 
 def looks_like_url(value: str) -> bool:
@@ -516,9 +602,13 @@ def open_or_create_pull_request(
     head_branch: str,
     project_name: str,
     target_repo,
+    metadata: dict | None = None,
+    metadata_schema=None,
 ) -> str | None:
     """Create or reuse a PR, poll until a URL is available, then open the browser.
 
+    A newly created PR gets a review comment when *metadata* has values that
+    are not in the tool's lists. An existing open PR is left as it is.
     Returns the PR URL on success, or ``None`` when creation/lookup failed.
     Expected ``gh`` misses (no PR yet) do not dump raw CLI help to the user.
     On create failure for large pushes, opens the GitHub compare page so the user
@@ -541,6 +631,7 @@ def open_or_create_pull_request(
     )
 
     pr_url: str | None = None
+    created = False
     if pr_state == 'OPEN':
         cli.progress('Open PR found. Confirming it with GitHub...')
     else:
@@ -552,7 +643,8 @@ def open_or_create_pull_request(
         pr_url = create_pull_request_with_retries(
             head_branch, project_name, target_repo,
         )
-        if not looks_like_url(pr_url or ''):
+        created = looks_like_url(pr_url or '')
+        if not created:
             compare = _pr_compare_url(head_branch, target_repo)
             print()
             print(f'  {ICON_ERROR} Could not create the pull request automatically.')
@@ -573,6 +665,8 @@ def open_or_create_pull_request(
     if not looks_like_url(pr_url or ''):
         pr_url = wait_for_pull_request_url(head_branch)
     if looks_like_url(pr_url or ''):
+        if created and metadata is not None and metadata_schema is not None:
+            _post_review_comment(gh, cli, head_branch, target_repo, metadata, metadata_schema)
         cli.progress('Opening pull request in browser...')
         if not open_url_in_browser(pr_url):
             gh(['pr', 'view', head_branch, '--web'], check=False, quiet_stderr=True)
@@ -613,41 +707,35 @@ try:
 
     # Initial summary
     print_header('Project Summary', icon=ICON_INFO)
-    print(f'  Target        : {target_repo.label} ({args.repo_key})')
-    print(f'  Repository    : {target_repo.base_repo}')
-    print(f'  Project path  : {project_path}')
-    print(f'  Project name  : {project_name}')
-    if target_repo.metadata_only:
-        print('  Output        : metadata.json only (no pull request)')
-    else:
-        print(f'  Branch        : {branch_name}')
-    has_existing_metadata = metadata_path.exists()
-    meta_status = (
-        f'{ICON_SUCCESS} found' if has_existing_metadata
-        else f'{ICON_INFO} not found — will be created'
+    print_project_summary(
+        target_repo=target_repo,
+        repo_key=args.repo_key,
+        project_path=project_path,
+        project_name=project_name,
+        metadata_status=(
+            f'{ICON_SUCCESS} found' if metadata_path.exists()
+            else f'{ICON_INFO} not found — will be created'
+        ),
+        readme_status=_readme_status(target_repo, project_path),
     )
-    print(f'  Project layout: {target_repo.project_layout}')
-    print(f'  metadata.json : {meta_status}')
-    if target_repo.metadata_only:
-        readme_status = (
-            f'{ICON_SUCCESS} found' if (project_path / 'README.md').is_file()
-            else f'{ICON_INFO} optional for this target'
-        )
-    else:
-        readme_status = (
-            f'{ICON_SUCCESS} found' if (project_path / 'README.md').is_file()
-            else f'{ICON_WARNING} missing (required)'
-        )
-    print(f'  README.md     : {readme_status}')
     print()
-    if not confirm('Proceed with this project and repository?'):
+    steps = project_steps(target_repo)
+    print_next_steps(steps)
+    print()
+    if not confirm_menu(
+        'Proceed with this project and repository?',
+        yes='Yes',
+        no='Abort',
+    ):
         print(f'{ICON_ABORT} Aborted by user.')
         sys.exit(0)
     print()
 
     # Metadata review / collection (after summary so the user can abort first)
     metadata_schema = get_metadata_schema(args.repo_key)
-    print_header('Metadata Collection', icon=ICON_INFO)
+    print_step_header(steps, 1)
+    print(colour_key_line())
+    notices: list[str] = []
     if args.override_metadata or not metadata_path.exists():
         metadata = args.collect_metadata()
     else:
@@ -665,13 +753,15 @@ try:
             ),
             project_name,
             project_path,
+            notices=notices,
         )
 
     while metadata:
         metadata = finalize_metadata(metadata, metadata_schema)
-        print('\nProject metadata.json overview:')
-        print(format_metadata_json(metadata).rstrip('\n'))
-        answer = confirm_metadata()
+        print(f'\nProject {paint_magenta("metadata.json")} overview:')
+        print(format_metadata_json(metadata, colour=True).rstrip('\n'))
+        print_metadata_notices(notices)
+        answer = confirm_metadata(save_on_yes=True)
         if answer == 'yes':
             metadata_path.write_text(
                 format_metadata_json(metadata),
@@ -690,7 +780,8 @@ try:
         metadata = args.metadata
 
     # metadata_only is a target flag. Any future repo with it set stops here;
-    # field contents still come from that repo's schema.
+    # field contents still come from that repo's schema. Saving metadata.json is
+    # the whole job for these targets, so no submission question is asked.
     if target_repo.metadata_only:
         print()
         print(
@@ -698,6 +789,9 @@ try:
             f'Nothing is pushed to {target_repo.base_repo}.',
         )
         sys.exit(0)
+
+    print_step_header(steps, 2)
+    confirm_submission(target_repo, args.repo_key, project_path, project_name)
 
     # Create CLI early so layout checks and GitHub setup can show spinners/progress.
     print()
@@ -974,6 +1068,7 @@ try:  # Always remove git_dir after this block
 
             pr_url = open_or_create_pull_request(
                 head_branch, project_name, target_repo,
+                metadata=metadata, metadata_schema=metadata_schema,
             )
 
             if looks_like_url(pr_url or ''):
