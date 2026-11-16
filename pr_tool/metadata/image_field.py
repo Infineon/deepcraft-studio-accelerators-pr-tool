@@ -34,11 +34,13 @@ def select_project_image(
     tag_arg: list[str] | None,
     default: str | None = None,
     image_names: list[str] | None = None,
+    tags: list[str] | None = None,
 ) -> str:
     """Pick a project image.
 
     *image_names* limits the catalog to those files, and the tag list to the
-    tags on those files. ``None`` keeps the full catalog.
+    tags on those files. *tags* replaces that tag list when a domain has
+    already removed the other domains' tags. ``None`` keeps the full catalog.
     """
     if image_arg:
         return normalize_project_image_name(image_arg)
@@ -48,7 +50,7 @@ def select_project_image(
     if image_names is not None:
         allowed = set(image_names)
         available_images = [name for name in catalog if name in allowed] or catalog
-        available_tags = get_tags_for_images(available_images)
+        available_tags = tags if tags is not None else get_tags_for_images(available_images)
     else:
         available_images = catalog
         available_tags = get_available_tags()
@@ -74,7 +76,7 @@ def select_project_image(
         )
     prompt = (
         f'{top_sep}\n'
-        f'{field_name("Project image")} - choose how to set the project image (.webp)\n'
+        f'{field_name("Image")} - choose how to set the image (.webp)\n'
         f'{saved}'
         f': '
     )

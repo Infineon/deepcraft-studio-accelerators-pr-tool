@@ -12,15 +12,27 @@ import constants
 from metadata import finalize_metadata
 from metadata.choices import (
     BRAND_IMAGE_ID,
-    METRIC_LABELS,
     brand_for_image,
     brand_url_error,
     match_choice,
     normalize_project_types,
 )
+from metadata.extra_content import (
+    PARTNER_REPO_KEY,
+    extra_field_issue,
+    optional_algorithm_issue,
+    optional_workflow_issue,
+)
+from metadata.metric_prompt import metrics_issue
+from metadata.prompts import format_custom_choice_value
 from metadata.rules import workflow_for_types
 from metadata.schema import FieldSpec, MetadataSchema
 from project_layouts import fixed_metadata_title, get_project_layout
+from studio_templates import (
+    STUDIO_TEMPLATE_LINK_MARKER,
+    is_studio_template_link,
+    is_studio_template_title,
+)
 from target_repo import TargetRepo
 
 CollectMissingFn = Callable[[dict, set[str]], dict]
@@ -53,35 +65,81 @@ def validate_metadata(
     project_path: Path | None = None,
 ) -> MetadataValidationResult:
     """Validate *metadata* against *schema*, splitting missing vs choice issues."""
+    from metadata.extra_content import copy_partner_brand_image
+
     result = MetadataValidationResult()
+    if isinstance(metadata, dict):
+        copy_partner_brand_image(metadata, schema.repo_key)
     if not isinstance(metadata, dict):
         result.missing.append('metadata.json must be a JSON object')
         return result
 
     for spec in schema.fields:
         if spec.kind == 'brand':
-            _validate_brand(metadata, spec, result)
+            _validate_brand(
+                metadata,
+                spec,
+                result,
+                allow_new=schema.repo_key == PARTNER_REPO_KEY,
+            )
         elif spec.kind == 'image':
             _validate_required_str(metadata, 'thumbnail_image_id', spec, result)
         elif spec.kind == 'image_mirror':
             _validate_image_mirror(metadata, spec, result)
         elif spec.kind in ('text', 'long_text'):
             _validate_text(metadata, spec, result)
+            if (
+                schema.repo_key == 'accelerators'
+                and spec.key == 'title'
+                and spec.key not in result.fields_to_collect
+            ):
+                _flag_studio_template_title(metadata, spec, result)
         elif spec.kind == 'single_choice':
             _validate_single_choice(metadata, spec, result)
         elif spec.kind == 'multi_choice':
             _validate_multi_choice(metadata, spec, result)
         elif spec.kind == 'derived_workflow':
-            _validate_derived_workflow(metadata, spec, result)
+            if spec.required:
+                _validate_derived_workflow(metadata, spec, result)
+            else:
+                _apply_issue(optional_workflow_issue(metadata, spec), spec, result)
         elif spec.kind == 'derived_algorithm':
-            _validate_derived_algorithm(metadata, spec, result, project_name, project_path)
+            if spec.required:
+                _validate_derived_algorithm(metadata, spec, result, project_name, project_path)
+            else:
+                _apply_issue(optional_algorithm_issue(metadata, spec), spec, result)
         elif spec.kind in ('accelerator_links', 'model_zoo_psoc_links', 'model_zoo_aurix_links'):
             _validate_links(metadata, spec, result, project_name)
         elif spec.kind == 'videos':
             _validate_videos(metadata, spec, result)
         elif spec.kind == 'metrics':
-            _validate_metrics(metadata, spec, result)
+            for issue in metrics_issue(metadata, spec):
+                _apply_issue(issue, spec, result)
+        elif spec.kind in ('card_type', 'card_id', 'date', 'links'):
+            _apply_issue(
+                extra_field_issue(metadata, spec, project_name, repo_key=schema.repo_key),
+                spec,
+                result,
+            )
+        else:
+            result.other.append(f'{spec.key}: unknown field kind {spec.kind!r}')
     return result
+
+
+def _apply_issue(
+    issue: tuple[str, str] | None,
+    spec: FieldSpec,
+    result: MetadataValidationResult,
+) -> None:
+    if issue is None:
+        return
+    kind, message = issue
+    if kind == 'missing':
+        _mark_missing(result, spec, message)
+    elif kind == 'choice':
+        _mark_choice(result, spec, message)
+    else:
+        _mark_other(result, spec, message)
 
 
 def validate_loaded_metadata(
@@ -165,8 +223,29 @@ def _repair_metadata_title(
     title = metadata.get('title')
     if not isinstance(title, str):
         return
-    spaced = fixed_metadata_title(title, project_name)
+    original = title.strip()
+    if not original:
+        return
+    if schema.repo_key == 'extra-content-partners':
+        from metadata.extra_content import partner_display_name
+
+        updated = partner_display_name(original)
+        if updated == original:
+            return
+        metadata['title'] = updated
+        message = f'Title updated from "{original}" to "{updated}".'
+        if notices is not None:
+            notices.append(message)
+        return
+    spaced = fixed_metadata_title(original, project_name)
     if spaced is None:
+        updated = format_custom_choice_value(original)
+        if updated == original:
+            return
+        metadata['title'] = updated
+        message = f'Title updated from "{original}" to "{updated}".'
+        if notices is not None:
+            notices.append(message)
         return
     max_length = next(
         (spec.max_length for spec in schema.fields if spec.key == 'title'),
@@ -174,26 +253,34 @@ def _repair_metadata_title(
     )
     if max_length is not None and len(spaced) > max_length:
         message = (
-            f'Title "{title.strip()}" stays as saved. '
+            f'Title "{original}" stays as saved. '
             f'With spaces it would pass {max_length} characters.'
         )
     else:
-        metadata['title'] = spaced
-        message = f'Title updated from "{title.strip()}" to "{spaced}".'
+        updated = format_custom_choice_value(spaced)
+        metadata['title'] = updated
+        message = f'Title updated from "{original}" to "{updated}".'
     if notices is not None:
         notices.append(message)
+
+
+def print_between_separators(*lines: str) -> None:
+    """Print *lines* between full-width dash rules, with a blank line above."""
+    rule = '-' * shutil.get_terminal_size((80, 24)).columns
+    print()
+    print(rule)
+    for line in lines:
+        print(line)
+    print(rule)
 
 
 def print_metadata_notices(notices: list[str]) -> None:
     """Print automatic-fix notes between dash lines, then clear them."""
     if not notices:
         return
-    rule = '-' * shutil.get_terminal_size((80, 24)).columns
-    print()
-    print(rule)
-    for message in notices:
-        print(f'{constants.ICON_INFO} {message}')
-    print(rule)
+    print_between_separators(*(
+        f'{constants.ICON_INFO} {message}' for message in notices
+    ))
     notices.clear()
 
 
@@ -259,6 +346,20 @@ def _validate_text(metadata: dict, spec: FieldSpec, result: MetadataValidationRe
         )
 
 
+def _flag_studio_template_title(
+    metadata: dict,
+    spec: FieldSpec,
+    result: MetadataValidationResult,
+) -> None:
+    title = metadata.get('title')
+    if isinstance(title, str) and is_studio_template_title(title):
+        _mark_other(
+            result, spec,
+            f'title {title.strip()!r} is a Studio template title. '
+            'Enter a title for this project.',
+        )
+
+
 def _choice_list_hint(spec: FieldSpec) -> str:
     return f'{len(spec.choices)} allowed values'
 
@@ -289,10 +390,16 @@ def _validate_multi_choice(metadata: dict, spec: FieldSpec, result: MetadataVali
     else:
         value = raw
     if value is None:
+        if spec.allow_empty:
+            metadata[spec.key] = []
+            return
         _mark_missing(result, spec, f'Missing required field: {spec.key}')
         return
-    if not isinstance(value, list) or not value:
+    if not isinstance(value, list) or (not value and not spec.allow_empty):
         _mark_missing(result, spec, f'{spec.key} must be a non-empty list')
+        return
+    if not value:
+        metadata[spec.key] = []
         return
     metadata[spec.key] = value
     for index, item in enumerate(value):
@@ -386,7 +493,13 @@ def _validate_image_mirror(metadata: dict, spec: FieldSpec, result: MetadataVali
         _mark_missing(result, spec, 'Missing or empty required field: main_image_id')
 
 
-def _validate_brand(metadata: dict, spec: FieldSpec, result: MetadataValidationResult) -> None:
+def _validate_brand(
+    metadata: dict,
+    spec: FieldSpec,
+    result: MetadataValidationResult,
+    *,
+    allow_new: bool = False,
+) -> None:
     brand_image_id = metadata.get('brand_image_id')
     brand_url = metadata.get('brand_url')
     if not isinstance(brand_image_id, str) or not brand_image_id.strip():
@@ -396,6 +509,15 @@ def _validate_brand(metadata: dict, spec: FieldSpec, result: MetadataValidationR
         _mark_missing(result, spec, 'Missing or empty required field: brand_url')
         return
     if brand_image_id not in BRAND_IMAGE_ID:
+        if brand_image_id.lower().endswith('.webp') and allow_new:
+            if brand_url_error(brand_url):
+                _mark_other(
+                    result,
+                    spec,
+                    f'brand_url: {brand_url!r} is not an absolute https:// URL, '
+                    f'for example https://acme.example',
+                )
+            return
         if brand_image_id.lower().endswith('.webp'):
             message = (
                 f'brand_image_id: {brand_image_id!r} is a new partner, not one of the '
@@ -411,7 +533,7 @@ def _validate_brand(metadata: dict, spec: FieldSpec, result: MetadataValidationR
             _mark_other(
                 result,
                 spec,
-                f'brand_url: {brand_url!r} is not an http(s) URL, '
+                f'brand_url: {brand_url!r} is not an absolute https:// URL, '
                 f'for example https://acme.example',
             )
         return
@@ -449,6 +571,13 @@ def _validate_links(
             if not isinstance(link.get(key), str) or not link[key].strip():
                 _mark_missing(result, spec, f'links[{index}] missing or empty {key!r}')
                 return
+        if spec.kind == 'accelerator_links' and is_studio_template_link(link['url']):
+            _mark_other(
+                result, spec,
+                f'links[{index}] url still points at a Studio template '
+                f'({STUDIO_TEMPLATE_LINK_MARKER}). Replace it with this project\'s link.',
+            )
+            return
         _repair_github_link_url(link, project_name)
 
 
@@ -505,29 +634,3 @@ def _validate_videos(metadata: dict, spec: FieldSpec, result: MetadataValidation
     error = video_link_error(video['link'])
     if error:
         _mark_other(result, spec, f'videos[1] link: {error}')
-
-
-def _validate_metrics(metadata: dict, spec: FieldSpec, result: MetadataValidationResult) -> None:
-    metrics = metadata.get('metrics')
-    if metrics is None:
-        if spec.required:
-            _mark_missing(result, spec, 'Missing required field: metrics')
-        return
-    if not isinstance(metrics, list) or not metrics:
-        _mark_other(result, spec, 'metrics must be a non-empty list when present')
-        return
-    allowed_labels = set(METRIC_LABELS)
-    for index, entry in enumerate(metrics, start=1):
-        if not isinstance(entry, dict):
-            _mark_other(result, spec, f'metrics[{index}] must be an object')
-            return
-        label = entry.get('label')
-        value = entry.get('value')
-        if not isinstance(label, str) or label not in allowed_labels:
-            _mark_choice(
-                result, spec,
-                f'metrics[{index}] label {label!r} is not allowed '
-                f'(expected one of {len(METRIC_LABELS)} predefined labels)',
-            )
-        if not isinstance(value, str) or not value.strip():
-            _mark_missing(result, spec, f'metrics[{index}] missing or empty value')

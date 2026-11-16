@@ -22,7 +22,38 @@ AURIX = 'AURIX\u2122'
 TARGET_HIGHLIGHT_WORDS = (PSOC, AURIX, 'Accelerators')
 
 # ── Target Repositories ─────────────────────────────────────────
-from target_repo import TargetRepo
+from target_repo import ContentCategory, TargetRepo
+
+# DEEPCRAFT AI Hub cards live at <category>/<card>/metadata.json.
+# The upstream owner is not BASE_REPO_OWNER, and only authorized users may contribute.
+AI_HUB_REPO_OWNER = 'Reyev123'
+AI_HUB_CONTENT_CATEGORIES: tuple[ContentCategory, ...] = (
+    ContentCategory(
+        'getting-started', 'getting_started', 'Getting Started',
+        'extra-content-getting-started',
+        'Guides, tutorials, and introductory material on Edge AI',
+    ),
+    ContentCategory(
+        'resources', 'resources', 'Resources',
+        'extra-content-resources',
+        'Blog posts, articles, white papers, and other reading on Edge AI',
+    ),
+    ContentCategory(
+        'partners', 'partners', 'Partners',
+        'extra-content-partners',
+        'Partner profiles that highlight partners and their Edge AI offerings',
+    ),
+    ContentCategory(
+        'solutions', 'solutions', 'Solutions',
+        'extra-content-solutions',
+        'Production-ready Edge AI solutions with performance metrics',
+    ),
+    ContentCategory(
+        'tools', 'tools', 'Tools',
+        'extra-content-tools',
+        'DEEPCRAFT\u2122 tools for developing and deploying Edge AI models',
+    ),
+)
 
 TARGET_REPOS: dict[str, TargetRepo] = {
     'accelerators': TargetRepo(
@@ -49,6 +80,18 @@ TARGET_REPOS: dict[str, TargetRepo] = {
         project_layout='metadata_only_layout',
         git_ignored_dirs=(),
         metadata_only=True,
+    ),
+    'extra-content': TargetRepo(
+        key='extra-content',
+        repo_name='deepcraft-ai-hub',
+        owner=AI_HUB_REPO_OWNER,
+        label=f'{DEEPCRAFT} AI Hub — Extra Content',
+        pr_title_template='AI Hub {category}: {project_name}',
+        project_layout='ai_hub_card_layout',
+        git_ignored_dirs=(),
+        restricted=True,
+        push_metadata_only=True,
+        content_categories=AI_HUB_CONTENT_CATEGORIES,
     ),
 }
 

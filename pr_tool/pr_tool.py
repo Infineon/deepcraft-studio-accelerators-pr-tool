@@ -35,7 +35,8 @@ from constants import (
 )
 from input import Input, confirm
 from updater import ensure_latest_version
-from metadata import confirm_metadata, finalize_metadata, format_metadata_json, get_metadata_schema
+from metadata import confirm_metadata, finalize_metadata, format_metadata_json
+from target_prompts import confirm_restricted, saved_card_content, select_content_category_interactively
 from pr_comment import _post_review_comment
 from metadata.prompts import colour_key_line, confirm_menu, paint_magenta, paint_words
 from submission_exclusions import (
@@ -44,8 +45,13 @@ from submission_exclusions import (
 )
 from target_repo import validate_target_repos_registry
 from utils import group_files
-from project_layouts import on_disk_names_matching
-from validation import print_metadata_notices, validate_loaded_metadata, validate_project_structure
+from project_layouts import card_directory_name_from_title, on_disk_names_matching
+from validation import (
+    print_between_separators,
+    print_metadata_notices,
+    validate_loaded_metadata,
+    validate_project_structure,
+)
 from metadata.schemas import validate_metadata_schemas
 
 
@@ -192,7 +198,7 @@ def print_header(title: str, *, icon: str = '') -> None:
 
 def _readme_status(target_repo, project_path: Path) -> str:
     found = (project_path / 'README.md').is_file()
-    if target_repo.metadata_only:
+    if target_repo.metadata_only or target_repo.push_metadata_only:
         return f'{ICON_SUCCESS} found' if found else f'{ICON_INFO} optional for this target'
     return f'{ICON_SUCCESS} found' if found else f'{ICON_WARNING} missing (required)'
 
@@ -205,13 +211,26 @@ def print_project_summary(
     project_name: str,
     metadata_status: str,
     readme_status: str,
+    publication=None,
+    card_name_from_title: bool = False,
+    content_directory: str | None = None,
 ) -> None:
     """Print the target, path, and branch that a submission will use."""
     print(f'  Target        : {paint_words(target_repo.label, TARGET_HIGHLIGHT_WORDS)} ({repo_key})')
     print(f'  Repository    : {target_repo.base_repo}')
     print(f'  Project path  : {project_path}')
     print(f'  Project name  : {project_name}')
-    if target_repo.metadata_only:
+    if target_repo.push_metadata_only and card_name_from_title:
+        folder = f'{content_directory}/' if content_directory else ''
+        print(f'  {ICON_INFO} A new card is saved in a subfolder named from its title.')
+        print(f'  Published file: {folder}<card>/metadata.json')
+        print(f'  {ICON_INFO} Only metadata.json is pushed. A local README.md stays on disk.')
+    elif target_repo.push_metadata_only and publication is not None:
+        print(f'  Published file: {publication.repo_subpath}/metadata.json')
+        print(f'  Branch        : {publication.branch_name}')
+        print(f'  Pull request  : {publication.pr_title}')
+        print(f'  {ICON_INFO} Only metadata.json is pushed. A local README.md stays on disk.')
+    elif target_repo.metadata_only:
         print('  Output        : metadata.json only (no pull request)')
     else:
         print(f'  Branch        : {project_name}')
@@ -242,7 +261,9 @@ def print_step_header(steps: tuple[str, ...], number: int) -> None:
     print_header(f'Step {number} of {len(steps)}: {steps[number - 1]}')
 
 
-def confirm_submission(target_repo, repo_key: str, project_path: Path, project_name: str) -> None:
+def confirm_submission(
+    target_repo, repo_key: str, project_path: Path, project_name: str, publication=None,
+) -> None:
     """Show what will be submitted and stop if the user declines.
 
     Only for targets that push and open a pull request. metadata.json is already
@@ -259,11 +280,15 @@ def confirm_submission(target_repo, repo_key: str, project_path: Path, project_n
         project_name=project_name,
         metadata_status=f'{ICON_SUCCESS} saved',
         readme_status=_readme_status(target_repo, project_path),
+        publication=publication,
     )
     print()
     print('  Saying yes continues with these steps:')
     print('  1. Fork and sync your repository')
-    print('  2. Push this project')
+    if target_repo.push_metadata_only:
+        print('  2. Push metadata.json')
+    else:
+        print('  2. Push this project')
     print('  3. Create the pull request and open it')
     print()
     if not confirm_menu('Proceed with pull request?', yes='Yes', no='Abort'):
@@ -487,6 +512,7 @@ def create_pull_request_via_api(
     project_name: str,
     target_repo,
     body_file: Path,
+    content_category=None,
 ) -> str | None:
     """Create a PR with the REST API (more reliable than ``gh pr create`` for huge diffs)."""
     url = _usable_gh_string(
@@ -494,7 +520,7 @@ def create_pull_request_via_api(
             [
                 'api',
                 f'repos/{target_repo.base_repo}/pulls',
-                '-f', f'title={target_repo.pr_title(project_name)}',
+                '-f', f'title={target_repo.pr_title(project_name, content_category)}',
                 '-f', f'head={head_branch}',
                 '-f', f'base={MAIN_BRANCH}',
                 '-f', f'body=@{body_file}',
@@ -514,6 +540,7 @@ def create_pull_request_with_retries(
     *,
     attempts: int = 3,
     delay_s: int = 15,
+    content_category=None,
 ) -> str | None:
     """Create a PR, retrying and falling back to the API when the CLI times out.
 
@@ -535,7 +562,7 @@ def create_pull_request_with_retries(
                 'pr', 'create',
                 '--base', MAIN_BRANCH,
                 '--head', head_branch,
-                '--title', target_repo.pr_title(project_name),
+                '--title', target_repo.pr_title(project_name, content_category),
                 '--body-file', str(body_path),
             ], check=False, quiet_stderr=True)
             if create_rc == 0:
@@ -550,7 +577,7 @@ def create_pull_request_with_retries(
             # CLI create often fails on huge file lists; try the lighter REST path.
             cli.progress('CLI create did not succeed; trying GitHub API...')
             api_url = create_pull_request_via_api(
-                head_branch, project_name, target_repo, body_path,
+                head_branch, project_name, target_repo, body_path, content_category,
             )
             if looks_like_url(api_url or ''):
                 return api_url
@@ -604,6 +631,7 @@ def open_or_create_pull_request(
     target_repo,
     metadata: dict | None = None,
     metadata_schema=None,
+    content_category=None,
 ) -> str | None:
     """Create or reuse a PR, poll until a URL is available, then open the browser.
 
@@ -617,7 +645,7 @@ def open_or_create_pull_request(
     print()
     print('=' * 60)
     print(f'  {ICON_INFO} Push to your fork finished.')
-    print(f'  {ICON_INFO} Next: create or open the pull request on Infineon.')
+    print(f'  {ICON_INFO} Next: create or open the pull request on {target_repo.repo_owner}.')
     print('=' * 60)
     print()
 
@@ -641,7 +669,7 @@ def open_or_create_pull_request(
         )
         # Do not pass --web here: open only after the URL is confirmed ready.
         pr_url = create_pull_request_with_retries(
-            head_branch, project_name, target_repo,
+            head_branch, project_name, target_repo, content_category=content_category,
         )
         created = looks_like_url(pr_url or '')
         if not created:
@@ -681,9 +709,20 @@ def open_or_create_pull_request(
     print()
     return None
 
+
+def _card_slug_for_new_content(metadata: dict, enabled: bool) -> str:
+    """URL-safe folder for a new extra-content card, or empty when not applicable."""
+    if not enabled:
+        return ''
+    title = metadata.get('title')
+    if not isinstance(title, str):
+        return ''
+    return card_directory_name_from_title(title)
+
+
 # ── Tool start ────────────────────────────────────────────────
 validate_target_repos_registry(TARGET_REPOS)
-validate_metadata_schemas(set(TARGET_REPOS))
+validate_metadata_schemas(TARGET_REPOS)
 
 # Self-update to the latest published version (skipped with --no-update or when
 # BASE_REPO_OWNER is overridden for local development).
@@ -702,8 +741,32 @@ print_header(f'{DEEPCRAFT} Pull Request Tool', icon=ICON_PULL_REQUEST)
 try:
     target_repo = args.target_repo
     project_path = args.project_path
-    branch_name = project_name = args.project_name
+    project_name = args.project_name
     metadata_path = project_path / 'metadata.json'
+
+    saved_card = None
+    if target_repo.has_content_categories:
+        saved_card = saved_card_content(
+            target_repo,
+            metadata_path,
+            override=args.override_metadata,
+        )
+        if saved_card is None:
+            select_content_category_interactively(args, print_header)
+        else:
+            category, _loaded = saved_card
+            args.select_content_category(category.key)
+            print(f'{ICON_INFO} Content type taken from metadata.json: {category.type_label}')
+    if not confirm_restricted(
+        target_repo,
+        before_push=False,
+        question='Continue with this restricted repository?',
+    ):
+        print(f'{ICON_ABORT} Aborted by user.')
+        sys.exit(0)
+
+    publication = target_repo.publication(project_name, args.content_category)
+    branch_name = publication.branch_name
 
     # Initial summary
     print_header('Project Summary', icon=ICON_INFO)
@@ -717,6 +780,11 @@ try:
             else f'{ICON_INFO} not found — will be created'
         ),
         readme_status=_readme_status(target_repo, project_path),
+        publication=None if args.card_name_from_title else publication,
+        card_name_from_title=args.card_name_from_title,
+        content_directory=(
+            args.content_category.directory if args.content_category is not None else None
+        ),
     )
     print()
     steps = project_steps(target_repo)
@@ -732,17 +800,20 @@ try:
     print()
 
     # Metadata review / collection (after summary so the user can abort first)
-    metadata_schema = get_metadata_schema(args.repo_key)
+    metadata_schema = args.metadata_schema
     print_step_header(steps, 1)
     print(colour_key_line())
     notices: list[str] = []
     if args.override_metadata or not metadata_path.exists():
         metadata = args.collect_metadata()
     else:
-        try:
-            metadata = json.loads(metadata_path.read_text(encoding='utf-8'))
-        except (OSError, json.JSONDecodeError) as exc:
-            raise ValueError(f'Could not read existing {metadata_path}: {exc}') from exc
+        if saved_card is not None:
+            metadata = saved_card[1]
+        else:
+            try:
+                metadata = json.loads(metadata_path.read_text(encoding='utf-8'))
+            except (OSError, json.JSONDecodeError) as exc:
+                raise ValueError(f'Could not read existing {metadata_path}: {exc}') from exc
         metadata = validate_loaded_metadata(
             metadata,
             metadata_schema,
@@ -758,16 +829,45 @@ try:
 
     while metadata:
         metadata = finalize_metadata(metadata, metadata_schema)
-        print(f'\nProject {paint_magenta("metadata.json")} overview:')
-        print(format_metadata_json(metadata, colour=True).rstrip('\n'))
+        card_slug = _card_slug_for_new_content(metadata, args.card_name_from_title)
+        if args.card_name_from_title:
+            if not card_slug:
+                print(
+                    f'{ICON_WARNING} The title does not produce a usable card folder name. '
+                    'Use a title that contains letters or digits.',
+                )
+                metadata = args.collect_metadata(
+                    use_cli_args=False, previous=metadata, only_fields={'title'}, review_pass=True,
+                )
+                continue
+            if 'id' in metadata_schema.field_order:
+                metadata['id'] = card_slug
+        print_between_separators(
+            f'Project {paint_magenta("metadata.json")} overview:',
+            format_metadata_json(metadata, colour=True).rstrip('\n'),
+        )
         print_metadata_notices(notices)
-        answer = confirm_metadata(save_on_yes=True)
+        folder_note = (
+            f'metadata.json will be saved in this folder: {project_path / card_slug}'
+            if args.card_name_from_title else None
+        )
+        answer = confirm_metadata(save_on_yes=True, note=folder_note)
         if answer == 'yes':
+            if args.card_name_from_title:
+                card_dir = project_path / card_slug
+                card_dir.mkdir(parents=True, exist_ok=True)
+                metadata_path = card_dir / 'metadata.json'
+                project_path = card_dir
+                project_name = card_slug
+                args.project_name = card_slug
+                args.project_path = card_dir
+                publication = target_repo.publication(card_slug, args.content_category)
+                branch_name = publication.branch_name
             metadata_path.write_text(
                 format_metadata_json(metadata),
                 encoding='utf-8',
             )
-            print(f'{ICON_SUCCESS} Saved metadata.json')
+            print(f'{ICON_SUCCESS} Saved {metadata_path}')
             break
         if answer == 'abort':
             print(f'{ICON_ABORT} Aborted by user.')
@@ -791,7 +891,17 @@ try:
         sys.exit(0)
 
     print_step_header(steps, 2)
-    confirm_submission(target_repo, args.repo_key, project_path, project_name)
+    confirm_submission(
+        target_repo, args.repo_key, project_path, project_name, publication,
+    )
+    if not confirm_restricted(
+        target_repo,
+        before_push=True,
+        question='Push metadata.json and open the pull request?',
+    ):
+        print(f'{ICON_ABORT} Aborted by user.')
+        print(f'{ICON_INFO} metadata.json was saved. Nothing was pushed.')
+        sys.exit(0)
 
     # Create CLI early so layout checks and GitHub setup can show spinners/progress.
     print()
@@ -842,7 +952,7 @@ if not fork_exists:
     with cli.busy('Creating fork on GitHub'):
         fork(target_repo.base_repo)
 else:
-    with cli.busy('Syncing your fork main branch with Infineon'):
+    with cli.busy(f'Syncing your fork main branch with {target_repo.repo_owner}'):
         sync_ok = gh(
             ['repo', 'sync', f'{user}/{target_repo.repo_name}', '--force', '--branch', MAIN_BRANCH],
             check=False,
@@ -880,7 +990,7 @@ try:  # Always remove git_dir after this block
                 git(['config', 'maintenance.auto', 'false'])
 
                 # Prevent git from processing tracked files that are outside the project
-                git(['sparse-checkout', 'set', '--no-cone', '!/*', f'/{project_name}/'])
+                git(['sparse-checkout', 'set', '--no-cone', '!/*', f'/{publication.repo_subpath}/'])
 
                 # Switch to the project branch
                 branch_ref = f'refs/heads/{branch_name}'
@@ -919,6 +1029,23 @@ try:  # Always remove git_dir after this block
                         git(['switch', branch_name])
                 commits_ahead = int(git(['rev-list', '--count', branch_ref, f'^refs/heads/{MAIN_BRANCH}'], stdout=PIPE))
                 commit_verb = 'Add' if commits_ahead <= 0 else 'Modify'
+                metadata_pushed = False
+                if target_repo.push_metadata_only:
+                    card_dir = Path(tmpdir) / publication.repo_subpath
+                    card_dir.mkdir(parents=True, exist_ok=True)
+                    shutil.copyfile(metadata_path, card_dir / 'metadata.json')
+                    published = f'{publication.repo_subpath}/metadata.json'
+                    git(['add', '--', published])
+                    staged = git(['diff', '--cached', '--name-only'], stdout=PIPE).strip()
+                    if staged:
+                        cli.progress(f'Committing {published}...')
+                        git(['commit', '--quiet', '--no-verify', '-m', f'{commit_verb} {published}'])
+                        push_args = ['push', '-u', 'origin', 'HEAD']
+                        if branch_was_reset:
+                            push_args.insert(1, '--force-with-lease')
+                        cli.progress(f'Pushing {published} to GitHub...')
+                        git(push_args)
+                        metadata_pushed = True
 
             # Print execution summary
             print_header('Creating / Updating Pull Request', icon=ICON_PROGRESS)
@@ -929,134 +1056,141 @@ try:  # Always remove git_dir after this block
             print()
 
             # Push project content to the user's remote (origin)
-            cli.cwd = repo_root = project_path.parent
-            cli.work_tree = repo_root
-            # Handle deletions
-            # Use on-disk spellings so a mis-cased Models/ (e.g. models/) is still
-            # excluded from the push if validation were ever skipped.
-            cli.progress('Preparing ignore rules for Models / local artefacts...')
-            ignored_dirs = on_disk_names_matching(project_path, target_repo.git_ignored_dirs)
-            ignore_paths = [f':^{project_path.name}/{dir}' for dir in ignored_dirs]
-            with cli.busy('Scanning project for local git/Python artefacts to exclude'):
-                ignore_paths.extend(build_submission_exclude_pathspecs(project_path))
-            with cli.busy('Checking for deleted files'):
-                diff_names_deleted = filter_submission_paths(
-                    git(
-                        [
-                            'diff', '--name-only', '--diff-filter=D', '--relative', '--',
-                            str(project_path), *ignore_paths,
-                        ],
-                        stdout=PIPE,
-                    ),
-                    project_path,
-                )
-            if diff_names_deleted:
-                cli.progress('Staging deletions...')
-                with NamedTemporaryFile('w', delete=False) as pathspec:
-                    pathspec.write(diff_names_deleted)
-                    pathspec.close()
-                    git(['rm', f'--pathspec-from-file={pathspec.name}'])
-                    os.remove(pathspec.name)
-            # Divide push into batches under GitHub size and file-count limits.
-            # Prefer diff + ls-files over a full-tree intent-to-add: listing 10k+
-            # untracked files that way is much faster and still finds every change.
-            with cli.busy('Listing changed files (git diff)'):
-                changed_names = filter_submission_paths(
-                    git(
-                        ['diff', '--name-only', '--relative', '--', str(project_path), *ignore_paths],
-                        stdout=PIPE,
-                    ),
-                    project_path,
-                )
-            with cli.busy('Listing new untracked files (can be slow on large folders)'):
-                untracked_names = filter_submission_paths(
-                    git(
-                        [
-                            'ls-files', '--others', '--exclude-standard', '--',
-                            str(project_path), *ignore_paths,
-                        ],
-                        stdout=PIPE,
-                    ),
-                    project_path,
-                )
-            seen: set[str] = set()
-            names: list[str] = []
-            for name in (*changed_names.splitlines(), *untracked_names.splitlines()):
-                name = name.strip()
-                if name and name not in seen:
-                    seen.add(name)
-                    names.append(name)
-            # GitHub caps the PR file list at 3,000 entries. Commit root-level project
-            # files (README.md, metadata.json, *.improj, ...) first so they stay visible
-            # to reviewers ahead of large Data/ epochs that follow.
-            root_files = [name for name in names if name.count('/') <= 1]
-            data_files = [name for name in names if name.count('/') > 1]
-            commit_batches: list[tuple[str, list[str]]] = []
-            if root_files:
-                commit_batches.append(('project files', root_files))
-            if data_files:
-                cli.progress(
-                    f'Splitting {len(data_files)} data file(s) into push-sized chunks '
-                    f'(max {GH_PUSH_MAX_FILES} files / ~2 GB each)...',
-                )
-                data_chunks = list(
-                    group_files(
-                        repo_root,
-                        '\n'.join(data_files),
-                        GH_PUSH_MAX_BYTES,
-                        max_files=GH_PUSH_MAX_FILES,
-                    ),
-                )
-                if len(data_chunks) == 1:
-                    commit_batches.append(('data files', data_chunks[0]))
-                else:
-                    total = len(data_chunks)
-                    for index, chunk in enumerate(data_chunks, start=1):
-                        commit_batches.append((f'data chunk {index} of {total}', chunk))
-            if commit_batches:
-                count = len(commit_batches)
-                file_total = sum(len(group) for _, group in commit_batches)
-                cli.progress(
-                    f'Pushing {file_total} file(s) in {count} commit'
-                    f'{"s" if count != 1 else ""}...',
-                )
-                for index, (label, group) in enumerate(commit_batches, start=1):
-                    cli.progress_bar(
-                        index - 1,
-                        count,
-                        f'Commit {index}/{count}: {label} ({len(group)} files)',
+            if target_repo.push_metadata_only:
+                pushed_changes = metadata_pushed
+                if not metadata_pushed:
+                    print('\n' + '=' * 60)
+                    print(f'  {ICON_INFO} No changes detected — nothing to push.')
+                    print('=' * 60 + '\n')
+            else:
+                cli.cwd = repo_root = project_path.parent
+                cli.work_tree = repo_root
+                # Handle deletions
+                # Use on-disk spellings so a mis-cased Models/ (e.g. models/) is still
+                # excluded from the push if validation were ever skipped.
+                cli.progress('Preparing ignore rules for Models / local artefacts...')
+                ignored_dirs = on_disk_names_matching(project_path, target_repo.git_ignored_dirs)
+                ignore_paths = [f':^{project_path.name}/{dir}' for dir in ignored_dirs]
+                with cli.busy('Scanning project for local git/Python artefacts to exclude'):
+                    ignore_paths.extend(build_submission_exclude_pathspecs(project_path))
+                with cli.busy('Checking for deleted files'):
+                    diff_names_deleted = filter_submission_paths(
+                        git(
+                            [
+                                'diff', '--name-only', '--diff-filter=D', '--relative', '--',
+                                str(project_path), *ignore_paths,
+                            ],
+                            stdout=PIPE,
+                        ),
+                        project_path,
                     )
-                    stage_paths_with_progress(group, label=label)
+                if diff_names_deleted:
+                    cli.progress('Staging deletions...')
+                    with NamedTemporaryFile('w', delete=False) as pathspec:
+                        pathspec.write(diff_names_deleted)
+                        pathspec.close()
+                        git(['rm', f'--pathspec-from-file={pathspec.name}'])
+                        os.remove(pathspec.name)
+                # Divide push into batches under GitHub size and file-count limits.
+                # Prefer diff + ls-files over a full-tree intent-to-add: listing 10k+
+                # untracked files that way is much faster and still finds every change.
+                with cli.busy('Listing changed files (git diff)'):
+                    changed_names = filter_submission_paths(
+                        git(
+                            ['diff', '--name-only', '--relative', '--', str(project_path), *ignore_paths],
+                            stdout=PIPE,
+                        ),
+                        project_path,
+                    )
+                with cli.busy('Listing new untracked files (can be slow on large folders)'):
+                    untracked_names = filter_submission_paths(
+                        git(
+                            [
+                                'ls-files', '--others', '--exclude-standard', '--',
+                                str(project_path), *ignore_paths,
+                            ],
+                            stdout=PIPE,
+                        ),
+                        project_path,
+                    )
+                seen: set[str] = set()
+                names: list[str] = []
+                for name in (*changed_names.splitlines(), *untracked_names.splitlines()):
+                    name = name.strip()
+                    if name and name not in seen:
+                        seen.add(name)
+                        names.append(name)
+                # GitHub caps the PR file list at 3,000 entries. Commit root-level project
+                # files (README.md, metadata.json, *.improj, ...) first so they stay visible
+                # to reviewers ahead of large Data/ epochs that follow.
+                root_files = [name for name in names if name.count('/') <= 1]
+                data_files = [name for name in names if name.count('/') > 1]
+                commit_batches: list[tuple[str, list[str]]] = []
+                if root_files:
+                    commit_batches.append(('project files', root_files))
+                if data_files:
                     cli.progress(
-                        f'Committing {label} ({len(group)} file'
-                        f'{"s" if len(group) != 1 else ""})...',
+                        f'Splitting {len(data_files)} data file(s) into push-sized chunks '
+                        f'(max {GH_PUSH_MAX_FILES} files / ~2 GB each)...',
                     )
-                    git(['commit', '--quiet', '--no-verify', '-m', f'{commit_verb} {label}'])
-                    cli.progress(f'Pushing {label} to GitHub (please wait)...')
+                    data_chunks = list(
+                        group_files(
+                            repo_root,
+                            '\n'.join(data_files),
+                            GH_PUSH_MAX_BYTES,
+                            max_files=GH_PUSH_MAX_FILES,
+                        ),
+                    )
+                    if len(data_chunks) == 1:
+                        commit_batches.append(('data files', data_chunks[0]))
+                    else:
+                        total = len(data_chunks)
+                        for index, chunk in enumerate(data_chunks, start=1):
+                            commit_batches.append((f'data chunk {index} of {total}', chunk))
+                if commit_batches:
+                    count = len(commit_batches)
+                    file_total = sum(len(group) for _, group in commit_batches)
+                    cli.progress(
+                        f'Pushing {file_total} file(s) in {count} commit'
+                        f'{"s" if count != 1 else ""}...',
+                    )
+                    for index, (label, group) in enumerate(commit_batches, start=1):
+                        cli.progress_bar(
+                            index - 1,
+                            count,
+                            f'Commit {index}/{count}: {label} ({len(group)} files)',
+                        )
+                        stage_paths_with_progress(group, label=label)
+                        cli.progress(
+                            f'Committing {label} ({len(group)} file'
+                            f'{"s" if len(group) != 1 else ""})...',
+                        )
+                        git(['commit', '--quiet', '--no-verify', '-m', f'{commit_verb} {label}'])
+                        cli.progress(f'Pushing {label} to GitHub (please wait)...')
+                        push_args = ['push', '-u', 'origin', 'HEAD']
+                        if branch_was_reset:
+                            push_args.insert(1, '--force-with-lease')
+                        git(push_args)
+                        cli.progress_bar(
+                            index,
+                            count,
+                            f'Finished {label}',
+                            final=True,
+                        )
+                    pushed_changes = True
+                elif diff_names_deleted:
+                    cli.progress('Pushing deletions...')
+                    git(['commit', '--quiet', '-m', 'Delete files'])
                     push_args = ['push', '-u', 'origin', 'HEAD']
                     if branch_was_reset:
                         push_args.insert(1, '--force-with-lease')
                     git(push_args)
-                    cli.progress_bar(
-                        index,
-                        count,
-                        f'Finished {label}',
-                        final=True,
-                    )
-                pushed_changes = True
-            elif diff_names_deleted:
-                cli.progress('Pushing deletions...')
-                git(['commit', '--quiet', '-m', 'Delete files'])
-                push_args = ['push', '-u', 'origin', 'HEAD']
-                if branch_was_reset:
-                    push_args.insert(1, '--force-with-lease')
-                git(push_args)
-                pushed_changes = True
-            else:
-                pushed_changes = False
-                print('\n' + '=' * 60)
-                print(f'  {ICON_INFO} No changes detected — nothing to push.')
-                print('=' * 60 + '\n')
+                    pushed_changes = True
+                else:
+                    pushed_changes = False
+                    print('\n' + '=' * 60)
+                    print(f'  {ICON_INFO} No changes detected — nothing to push.')
+                    print('=' * 60 + '\n')
 
             if not ensure_remote_branch_for_pr(
                 branch_is_new=branch_is_new,
@@ -1069,6 +1203,7 @@ try:  # Always remove git_dir after this block
             pr_url = open_or_create_pull_request(
                 head_branch, project_name, target_repo,
                 metadata=metadata, metadata_schema=metadata_schema,
+                content_category=args.content_category,
             )
 
             if looks_like_url(pr_url or ''):

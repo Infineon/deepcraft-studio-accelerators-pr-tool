@@ -19,6 +19,18 @@ import urllib.request
 
 import constants
 
+
+def ensure_https_scheme(value: str) -> str:
+    """Add ``https://`` when an address has no scheme.
+
+    ``http://`` and ``https://`` are left as typed.
+    """
+    text = value.strip()
+    if not text or '://' in text:
+        return text
+    return f'https://{text}'
+
+
 _TIMEOUT_SECONDS = 10
 _USER_AGENT = 'DEEPCRAFT-PR-Tool'
 _RETRY_GET = frozenset({400, 403, 405, 501})
