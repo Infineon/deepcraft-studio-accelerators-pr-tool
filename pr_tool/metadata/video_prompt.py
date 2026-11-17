@@ -13,9 +13,10 @@ from metadata.prompts import (
     field_name,
     format_custom_choice_value,
     input_prefilled,
+    paint_blue,
     paint_yellow,
 )
-from metadata.link_check import ensure_https_scheme, video_link_response_error
+from metadata.link_check import ensure_https_scheme, video_link_response_error, youtube_video_title
 from metadata.video_link import video_link_error
 
 
@@ -213,8 +214,11 @@ def _choose_video(current: dict | None, *, several: bool) -> str:
         details = [
             f'  Title: {current["title"]}',
             f'  Description: {current["description"]}',
-            f'  Link: {current["link"]}',
+            f'  Link: {paint_blue(current["link"])}',
         ]
+        youtube_title = youtube_video_title(current['link'])
+        if youtube_title:
+            details.append(f'  YouTube title: {youtube_title}')
         options = [
             _choice('Enter', 'Keep this video'),
             _choice('1', 'Modify the video'),
@@ -257,7 +261,9 @@ def collect_videos(previous: dict) -> list[dict] | None:
     when none is saved, and keeps a saved video.
     ``1`` adds or modifies a video, and ``2`` removes a saved video.
     After an address is approved, the title, description, and link are shown
-    again with keep, modify, and remove.
+    again with keep, modify, and remove. A YouTube link also shows the title
+    YouTube reports, so the address can be checked against it. That title is
+    not stored. The address is shown in blue.
     Three attempts on the video link, empty, rejected, or not responding, return to this prompt.
     ``None`` means ``videos`` is left out of ``metadata.json``.
     """

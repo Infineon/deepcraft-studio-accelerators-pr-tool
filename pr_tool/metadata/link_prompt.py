@@ -20,6 +20,7 @@ from metadata.prompts import (
     format_custom_choice_value,
     input_prefilled,
     input_str,
+    paint_blue,
     paint_yellow,
 )
 from metadata.schema import FieldSpec
@@ -425,7 +426,7 @@ def _listed_links(links: list[dict]) -> list[str]:
     for number, link in enumerate(links, start=1):
         lines.append(f'  {number}. {link["heading"]}')
         lines.append(f'     {link["sub-heading"]}')
-        lines.append(f'     {link["url"]}')
+        lines.append(f'     {paint_blue(link["url"])}')
     return lines
 
 

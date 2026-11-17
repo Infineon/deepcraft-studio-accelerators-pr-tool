@@ -8,7 +8,7 @@ contributors open pull requests against Infineon DEEPCRAFT&trade; GitHub repos:
 | `accelerators` | [deepcraft-studio-accelerators](https://github.com/Infineon/deepcraft-studio-accelerators) |
 | `model-zoo-psoc` | [deepcraft-model-zoo-for-psoc](https://github.com/Infineon/deepcraft-model-zoo-for-psoc) |
 | `model-zoo-aurix` | [deepcraft-model-zoo-for-aurix](https://github.com/Infineon/deepcraft-model-zoo-for-aurix) — writes `metadata.json` only; does not open a pull request |
-| `extra-content` | [deepcraft-ai-hub](https://github.com/Reyev123/deepcraft-ai-hub) — pushes one `metadata.json` per card and opens a pull request. Restricted to authorized users. |
+| `extra-content` | [deepcraft-ai-hub](https://github.com/Reyev123/deepcraft-ai-hub) — pushes one `metadata.json` per card, plus a Partners brand image when you give a local file, and opens a pull request. Restricted to authorized users. |
 
 **End users:** see [`pr_tool/README.md`](pr_tool/README.md) for full usage,
 options, project layouts, and troubleshooting.
@@ -62,11 +62,12 @@ GitHub auth, fork sync, branching, push, and opens the PR in your browser.
 | **`pr_tool/metadata/long_description_prompt.py`** | Long-description prompt. The terminal takes plain text of any length, without line breaks. Notepad takes plain text, Markdown, or HTML, and opens with a short instruction note labeled [ INSTRUCTIONS ]. It ends with [ LONG DESCRIPTION ] - Write it below, and the description is written on the following lines. With no saved text, Enter is plain text and `1` opens Notepad. After the text is entered, Enter confirms it, `1` changes it in the terminal, and `2` opens Notepad. |
 | **`pr_tool/metadata/long_description.py`** | Keeps plain long-description text as-is; converts Markdown to HTML; validates Markdown and text HTML (allowed tags, matching tags, safe links; no images/scripts). |
 | **`pr_tool/metadata/video_link.py`** | Accepts a single video URL (YouTube, Vimeo, Dailymotion, Wistia, Loom, or a direct video file). Rejects playlists, collections, channels, and regular web pages. Links with a start time (such as `?t=42`) are accepted. |
-| **`pr_tool/metadata/link_check.py`** | Requests a brand URL or video link. `ensure_https_scheme` adds `https://` to a brand, video, or webpage link typed without a scheme. A working address prints "Link approved". A HEAD request is retried with GET when the server rejects HEAD. YouTube and Vimeo video links are checked through their oEmbed endpoints, since YouTube answers HTTP 200 even for a missing video. A video that exists prints "Video approved". |
-| **`pr_tool/metadata/video_prompt.py`** | Optional video prompt for one video: title (max 40 characters), description (max 300 characters), and link. The heading says to add a video link. Press Enter when there is no video to add, or type `1` to add a video. A saved video is kept with Enter, `1` modifies it, and `2` removes it. A saved title, description, or link is kept with Enter, and `1` modifies it. Three attempts on the link, empty, rejected, or not responding, return to the Videos prompt. YouTube and Vimeo links are checked against the provider. A missing video is refused, and a video that exists prints "Video approved". Other video hosts print "Link approved". A link typed without a scheme gets `https://` added. An empty `videos` value is left out of `metadata.json`. |
+| **`pr_tool/metadata/link_check.py`** | Requests a brand URL or video link. `ensure_https_scheme` adds `https://` to a brand, video, or webpage link typed without a scheme. A working address prints "Link approved". A HEAD request is retried with GET when the server rejects HEAD. YouTube and Vimeo video links are checked through their oEmbed endpoints, since YouTube answers HTTP 200 even for a missing video. A video that exists prints "Video approved". The YouTube reply's title is kept for the video recap and is not written to `metadata.json`. |
+| **`pr_tool/metadata/video_prompt.py`** | Optional video prompt for one video: title (max 40 characters), description (max 300 characters), and link. The heading says to add a video link. Press Enter when there is no video to add, or type `1` to add a video. A saved video is kept with Enter, `1` modifies it, and `2` removes it. A saved title, description, or link is kept with Enter, and `1` modifies it. Three attempts on the link, empty, rejected, or not responding, return to the Videos prompt. YouTube and Vimeo links are checked against the provider. A missing video is refused, and a video that exists prints "Video approved". The recap of a YouTube link also shows the title YouTube reports, so the address can be checked against it. The address in that recap, and each address in a link recap, is shown in blue. Other video hosts print "Link approved". A link typed without a scheme gets `https://` added. An empty `videos` value is left out of `metadata.json`. |
 | **`pr_tool/metadata/metric_prompt.py`** | Optional performance metrics. Model-zoo PSOC adds one listed label at a time. A Solutions card asks for RW Memory Usage (KiB), RO Memory Usage (KiB), and Inference Time (ms) in order. Each value must be a number, KiB means kibibytes (1024 bytes), and each entry also stores a note. The note description includes an example from the published baby-cry card. A saved list is kept with Enter, changed with 1, or removed with 2, and that recap does not repeat the entry instructions. |
 | **`pr_tool/metadata/format.py`** | Pretty-prints `metadata.json` with keys in schema order. |
 | **`pr_tool/metadata/image_field.py`** | Interactive and CLI-driven project image selection (`--image`, `--tag`, or pick from catalog). With no saved image, Enter auto-selects from tags and `1` picks from the catalog. |
+| **`pr_tool/metadata/card_image.py`** | Optional local image published next to `metadata.json`. A content type opts in by adding its schema key to `CARD_IMAGES`, then calling `interpret_card_image` from its prompt. The file must be WebP and 16:9. Partners is the only entry today (`brand_image_id`). Choosing New Brand/Partner on an accelerator, a Model Zoo project, or another extra-content card still stores a `.webp` file name and does not publish the file. A Partners image is staged with `git add -f` in the same commit as `metadata.json`, so the pull request lists both files and a `.webp` ignore rule cannot drop the image. |
 
 At startup, `pr_tool.py` checks that **`TARGET_REPOS` keys match `SCHEMAS`**
 and that each target uses a registered **project layout**.
@@ -109,6 +110,7 @@ folder name.
 | Algorithm from `.improj` | `metadata/improj.py`, `engine.py` |
 | Git / PR flow | `pr_tool.py`, `cli.py` |
 | Reviewer comment after a new PR | `pr_comment.py` (`REVIEW_NOTES`) |
+| Publish a local image beside `metadata.json` | `metadata/card_image.py` (`CARD_IMAGES`) |
 
 ### Add a target repository
 
@@ -167,7 +169,7 @@ Edit `EXCLUDED_NAMES` and `EXCLUDED_FILE_GLOBS` in `submission_exclusions.py`.
    * **accelerators** — `README.md`, `metadata.json`, `<Name>.improj`, `Data/`; CamelCase name.
    * **model-zoo-psoc** — `README.md`, `metadata.json`; branch-safe folder name.
    * **metadata-only targets** (currently `model-zoo-aurix`) — any folder; the tool writes `metadata.json` and stops. No git push or pull request. A new metadata-only repo uses the same flag; only its schema is new.
-   * **extra-content** — a local card folder. The card name is a lowercase URL-safe identifier. The tool writes `metadata.json`, pushes that file to `Reyev123/deepcraft-ai-hub`, and opens a pull request.
+   * **extra-content** — a local card folder. The card name is a lowercase URL-safe identifier. The tool writes `metadata.json`, pushes that file to `Reyev123/deepcraft-ai-hub`, and opens a pull request. A Partners card can also give a local `.webp` file in 16:9; that file is committed next to `metadata.json` and listed in the pull request. Choosing New Brand/Partner on another target does not do this.
 
    A test folder may also be a local git repo or contain a venv; those paths are
    excluded from push and (for accelerators) from root layout validation.

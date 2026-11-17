@@ -8,6 +8,7 @@ from typing import Any
 
 import constants
 
+from metadata.card_image import clear_card_image, interpret_card_image, remember_card_image
 from metadata.extra_content import (
     NOT_EXTRA,
     PARTNER_REPO_KEY,
@@ -491,15 +492,23 @@ def _collect_custom_brand(previous: dict, *, keep_saved: bool = False, partner: 
     url_default = prev_url if isinstance(prev_url, str) and prev_url.strip() and image_default else None
     print('\nEnter brand details for the new brand/partner.')
     while True:
-        brand_image_id = input_str(
+        entered = input_str(
             'Brand image file name',
             None,
             default=image_default,
             aside=BRAND_IMAGE_HINT if partner else None,
         )
-        if brand_image_id.lower().endswith('.webp'):
+        if partner:
+            brand_image_id, source, error = interpret_card_image(entered)
+            if error is None:
+                remember_card_image(brand_image_id, source)
+                break
+            warn(error)
+        elif entered.lower().endswith('.webp'):
+            brand_image_id = entered
             break
-        warn('Enter an image file name ending in .webp, for example acme.webp.')
+        else:
+            warn('Enter an image file name ending in .webp, for example acme.webp.')
         image_default = None
     while True:
         brand_url = ensure_https_scheme(input_str(
@@ -548,6 +557,7 @@ def _collect_brand(
     )
     if label == NEW_BRAND_PARTNER_LABEL:
         return _collect_custom_brand(previous, keep_saved=partner, partner=partner)
+    clear_card_image()
     for brand in (INFINEON_BRAND, *PARTNER_BRANDS):
         if brand.label == label:
             return brand

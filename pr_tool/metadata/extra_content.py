@@ -33,7 +33,11 @@ PARTNER_NAME_HINT = (
     'Trademark and registered symbols are supported: type (TM), (R), or (SM) '
     'to enter ™, ®, or ℠ (for example, Acme (TM) is saved as Acme™).'
 )
-BRAND_IMAGE_HINT = 'Use a .webp image in 16:9 format, for example acme.webp.'
+BRAND_IMAGE_HINT = (
+    'Enter a .webp file name, or a path to a local .webp file in 16:9. '
+    'A local file is checked and published next to metadata.json. '
+    'For example, acme.webp.'
+)
 BRAND_URL_HINT = 'Enter the company or brand home page.'
 PARTNER_LINKS_INTRO = (
     '  Add links to webpages that describe the company or brand focus and main activities.'

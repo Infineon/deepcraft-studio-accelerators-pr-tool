@@ -12,6 +12,7 @@ from metadata.choices import canonical_choice, match_choice
 
 _GREEN = '\033[32m'
 _YELLOW = '\033[33m'
+_BLUE = '\033[94m'
 _CYAN = '\033[36m'
 _GREY = '\033[90m'
 _MAGENTA = '\033[35m'
@@ -58,6 +59,11 @@ def paint_yellow(text: str) -> str:
     return _paint(text, _YELLOW)
 
 
+def paint_blue(text: str) -> str:
+    """Colour *text* blue (an address in a video or link recap)."""
+    return _paint(text, _BLUE)
+
+
 def paint_cyan(text: str) -> str:
     """Colour *text* cyan (the keys and list numbers the user types)."""
     return _paint(text, _CYAN)
@@ -80,6 +86,7 @@ def colour_key_line() -> str:
     return (
         f'  Color Code: {paint_green("green")} field names, '
         f'{paint_cyan("cyan")} choices, options, and the field counter, '
+        f'{paint_blue("blue")} links in a video or link recap, '
         f'{paint_yellow("yellow")} current values and warnings, '
         f'{paint_magenta("magenta")} others.'
     )
@@ -134,13 +141,17 @@ def field_progress_prefix() -> str:
 
 
 def _progress_suffix(text: str) -> str:
+    """The ``(4/15)`` mark when *text* is the field being collected.
+
+    A heading may add a note after the label, such as ``Published date (YYYY-MM-DD)``.
+    """
     if _field_progress is None:
         return ''
-    label = _field_progress[0]
+    label = _field_progress[0].casefold()
     folded = text.casefold()
-    if folded not in (label.casefold(), f'{label}(s)'.casefold()):
-        return ''
-    return f' {_progress_mark()}'
+    if folded in (label, f'{label}(s)') or folded.startswith(f'{label} '):
+        return f' {_progress_mark()}'
+    return ''
 
 
 def field_name(text: str) -> str:

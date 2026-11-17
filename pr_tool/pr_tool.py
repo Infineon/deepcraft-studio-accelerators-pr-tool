@@ -36,6 +36,7 @@ from constants import (
 from input import Input, confirm
 from updater import ensure_latest_version
 from metadata import confirm_metadata, finalize_metadata, format_metadata_json
+from metadata.card_image import card_image_spec, copy_card_image, place_card_image
 from target_prompts import confirm_restricted, saved_card_content, select_content_category_interactively
 from pr_comment import _post_review_comment
 from metadata.prompts import colour_key_line, confirm_menu, paint_magenta, paint_words
@@ -214,6 +215,8 @@ def print_project_summary(
     publication=None,
     card_name_from_title: bool = False,
     content_directory: str | None = None,
+    bundled_image: str | None = None,
+    image_label: str = 'image',
 ) -> None:
     """Print the target, path, and branch that a submission will use."""
     print(f'  Target        : {paint_words(target_repo.label, TARGET_HIGHLIGHT_WORDS)} ({repo_key})')
@@ -224,12 +227,15 @@ def print_project_summary(
         folder = f'{content_directory}/' if content_directory else ''
         print(f'  {ICON_INFO} A new card is saved in a subfolder named from its title.')
         print(f'  Published file: {folder}<card>/metadata.json')
-        print(f'  {ICON_INFO} Only metadata.json is pushed. A local README.md stays on disk.')
+        print(f'  {_pushed_files_note(bundled_image)}')
     elif target_repo.push_metadata_only and publication is not None:
         print(f'  Published file: {publication.repo_subpath}/metadata.json')
+        if bundled_image:
+            heading = image_label[:1].upper() + image_label[1:]
+            print(f'  {heading:<13}: {publication.repo_subpath}/{bundled_image}')
         print(f'  Branch        : {publication.branch_name}')
         print(f'  Pull request  : {publication.pr_title}')
-        print(f'  {ICON_INFO} Only metadata.json is pushed. A local README.md stays on disk.')
+        print(f'  {_pushed_files_note(bundled_image)}')
     elif target_repo.metadata_only:
         print('  Output        : metadata.json only (no pull request)')
     else:
@@ -261,8 +267,22 @@ def print_step_header(steps: tuple[str, ...], number: int) -> None:
     print_header(f'Step {number} of {len(steps)}: {steps[number - 1]}')
 
 
+def _pushed_files_note(bundled_image: str | None) -> str:
+    """What an extra-content push sends. A partner image is included when present."""
+    if bundled_image:
+        return (
+            f'{ICON_INFO} metadata.json and {bundled_image} are pushed. '
+            'A local README.md stays on disk.'
+        )
+    return (
+        f'{ICON_INFO} Only metadata.json is pushed. A local README.md stays on disk.'
+    )
+
+
 def confirm_submission(
     target_repo, repo_key: str, project_path: Path, project_name: str, publication=None,
+    bundled_image: str | None = None,
+    image_label: str = 'image',
 ) -> None:
     """Show what will be submitted and stop if the user declines.
 
@@ -281,11 +301,15 @@ def confirm_submission(
         metadata_status=f'{ICON_SUCCESS} saved',
         readme_status=_readme_status(target_repo, project_path),
         publication=publication,
+        bundled_image=bundled_image,
+        image_label=image_label,
     )
     print()
     print('  Saying yes continues with these steps:')
     print('  1. Fork and sync your repository')
-    if target_repo.push_metadata_only:
+    if target_repo.push_metadata_only and bundled_image:
+        print(f'  2. Push metadata.json and the {image_label}')
+    elif target_repo.push_metadata_only:
         print('  2. Push metadata.json')
     else:
         print('  2. Push this project')
@@ -293,7 +317,11 @@ def confirm_submission(
     print()
     if not confirm_menu('Proceed with pull request?', yes='Yes', no='Abort'):
         print(f'{ICON_ABORT} Aborted by user.')
-        print(f'{ICON_INFO} metadata.json was saved. Nothing was pushed.')
+        saved = (
+            f'metadata.json and {bundled_image} were saved'
+            if bundled_image else 'metadata.json was saved'
+        )
+        print(f'{ICON_INFO} {saved}. Nothing was pushed.')
         sys.exit(0)
     print()
 
@@ -710,6 +738,38 @@ def open_or_create_pull_request(
     return None
 
 
+def card_sparse_checkout_args(repo_subpath: str) -> list[str]:
+    """Sparse-checkout patterns that keep one card folder and nothing else."""
+    return ['sparse-checkout', 'set', '--no-cone', '!/*', f'/{repo_subpath}/']
+
+
+def stage_published_card(
+    git,
+    checkout: Path,
+    metadata_path: Path,
+    repo_subpath: str,
+    image_name: str | None,
+) -> list[str]:
+    """Copy a card into *checkout* and stage it for the commit the pull request uses.
+
+    ``metadata.json`` is always staged. *image_name*, when set, is the file that
+    already sits next to *metadata_path*; it is copied into the same card folder
+    and staged with ``git add -f``. The force flag keeps an ignore rule such as
+    ``*.webp`` from dropping the image and aborting the metadata commit with it.
+    The paths returned are the files in that commit, which is the pull request diff.
+    """
+    card_dir = checkout / Path(repo_subpath)
+    card_dir.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(metadata_path, card_dir / 'metadata.json')
+    paths = [f'{repo_subpath}/metadata.json']
+    if image_name:
+        paths.append(copy_card_image(
+            metadata_path.parent, card_dir, image_name, repo_subpath,
+        ))
+    git(['add', '-f', '--', *paths])
+    return paths
+
+
 def _card_slug_for_new_content(metadata: dict, enabled: bool) -> str:
     """URL-safe folder for a new extra-content card, or empty when not applicable."""
     if not enabled:
@@ -827,6 +887,8 @@ try:
             notices=notices,
         )
 
+    bundled_image = None
+    image_label = 'image'
     while metadata:
         metadata = finalize_metadata(metadata, metadata_schema)
         card_slug = _card_slug_for_new_content(metadata, args.card_name_from_title)
@@ -868,6 +930,16 @@ try:
                 encoding='utf-8',
             )
             print(f'{ICON_SUCCESS} Saved {metadata_path}')
+            schema_key = (
+                args.content_category.schema_key if args.content_category is not None else None
+            )
+            published_image = place_card_image(metadata_path.parent, metadata, schema_key)
+            if published_image is not None:
+                bundled_image = published_image.name
+                spec = card_image_spec(schema_key)
+                if spec is not None:
+                    image_label = spec.label
+                print(f'{ICON_SUCCESS} Saved {published_image}')
             break
         if answer == 'abort':
             print(f'{ICON_ABORT} Aborted by user.')
@@ -893,14 +965,23 @@ try:
     print_step_header(steps, 2)
     confirm_submission(
         target_repo, args.repo_key, project_path, project_name, publication,
+        bundled_image=bundled_image,
+        image_label=image_label,
     )
+    push_question = 'Push metadata.json and open the pull request?'
+    if bundled_image:
+        push_question = f'Push metadata.json and the {image_label}, and open the pull request?'
     if not confirm_restricted(
         target_repo,
         before_push=True,
-        question='Push metadata.json and open the pull request?',
+        question=push_question,
     ):
         print(f'{ICON_ABORT} Aborted by user.')
-        print(f'{ICON_INFO} metadata.json was saved. Nothing was pushed.')
+        saved = (
+            f'metadata.json and {bundled_image} were saved'
+            if bundled_image else 'metadata.json was saved'
+        )
+        print(f'{ICON_INFO} {saved}. Nothing was pushed.')
         sys.exit(0)
 
     # Create CLI early so layout checks and GitHub setup can show spinners/progress.
@@ -990,7 +1071,7 @@ try:  # Always remove git_dir after this block
                 git(['config', 'maintenance.auto', 'false'])
 
                 # Prevent git from processing tracked files that are outside the project
-                git(['sparse-checkout', 'set', '--no-cone', '!/*', f'/{publication.repo_subpath}/'])
+                git(card_sparse_checkout_args(publication.repo_subpath))
 
                 # Switch to the project branch
                 branch_ref = f'refs/heads/{branch_name}'
@@ -1031,13 +1112,16 @@ try:  # Always remove git_dir after this block
                 commit_verb = 'Add' if commits_ahead <= 0 else 'Modify'
                 metadata_pushed = False
                 if target_repo.push_metadata_only:
-                    card_dir = Path(tmpdir) / publication.repo_subpath
-                    card_dir.mkdir(parents=True, exist_ok=True)
-                    shutil.copyfile(metadata_path, card_dir / 'metadata.json')
-                    published = f'{publication.repo_subpath}/metadata.json'
-                    git(['add', '--', published])
+                    stage_published_card(
+                        git,
+                        Path(tmpdir),
+                        metadata_path,
+                        publication.repo_subpath,
+                        bundled_image,
+                    )
                     staged = git(['diff', '--cached', '--name-only'], stdout=PIPE).strip()
                     if staged:
+                        published = ' and '.join(staged.splitlines())
                         cli.progress(f'Committing {published}...')
                         git(['commit', '--quiet', '--no-verify', '-m', f'{commit_verb} {published}'])
                         push_args = ['push', '-u', 'origin', 'HEAD']
@@ -1046,6 +1130,10 @@ try:  # Always remove git_dir after this block
                         cli.progress(f'Pushing {published} to GitHub...')
                         git(push_args)
                         metadata_pushed = True
+
+            # The scratch clone above was deleted with its TemporaryDirectory. Later gh
+            # calls must not start in that folder, or Windows cannot launch them.
+            cli.cwd = project_path.parent
 
             # Print execution summary
             print_header('Creating / Updating Pull Request', icon=ICON_PROGRESS)
