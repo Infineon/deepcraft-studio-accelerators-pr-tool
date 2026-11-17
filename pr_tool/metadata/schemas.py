@@ -3,6 +3,7 @@
 from dataclasses import replace
 
 from metadata import choices as c
+from metadata.extra_content import build_ai_hub_schemas
 from metadata.schema import FieldSpec, MetadataSchema
 
 TITLE_MAX_LENGTH = 40
@@ -11,13 +12,13 @@ LONG_DESCRIPTION_MAX_LENGTH = None
 
 _SHARED_FIELDS: tuple[FieldSpec, ...] = (
     FieldSpec(
-        'title', 'Project title', 'text',
+        'title', 'Title', 'text',
         max_length=TITLE_MAX_LENGTH,
         cli_flag='--title',
-        cli_help=f'The title of the project; max {TITLE_MAX_LENGTH} characters.',
+        cli_help=f'The title; max {TITLE_MAX_LENGTH} characters.',
     ),
     FieldSpec(
-        'description', 'Project description', 'text',
+        'description', 'Description', 'text',
         max_length=DESCRIPTION_MAX_LENGTH,
         cli_flag='--description',
         cli_help=f'Short description; max {DESCRIPTION_MAX_LENGTH} characters.',
@@ -53,7 +54,7 @@ _SHARED_FIELDS: tuple[FieldSpec, ...] = (
         choices=c.WORKFLOW,
         allow_custom=False,
     ),
-    FieldSpec('thumbnail_image_id', 'Project image', 'image'),
+    FieldSpec('thumbnail_image_id', 'Image', 'image'),
     FieldSpec('main_image_id', 'Main image', 'image_mirror'),
     FieldSpec('brand', 'Brand', 'brand'),
 )
@@ -116,23 +117,42 @@ MODEL_ZOO_AURIX_SCHEMA = MetadataSchema(
     ),
 )
 
+(
+    AI_HUB_GETTING_STARTED_SCHEMA,
+    AI_HUB_PARTNERS_SCHEMA,
+    AI_HUB_RESOURCES_SCHEMA,
+    AI_HUB_SOLUTIONS_SCHEMA,
+    AI_HUB_TOOLS_SCHEMA,
+) = build_ai_hub_schemas(_shared, _VIDEOS_FIELD)
+
 SCHEMAS: dict[str, MetadataSchema] = {
     ACCELERATORS_SCHEMA.repo_key: ACCELERATORS_SCHEMA,
     MODEL_ZOO_PSOC_SCHEMA.repo_key: MODEL_ZOO_PSOC_SCHEMA,
     MODEL_ZOO_AURIX_SCHEMA.repo_key: MODEL_ZOO_AURIX_SCHEMA,
+    AI_HUB_GETTING_STARTED_SCHEMA.repo_key: AI_HUB_GETTING_STARTED_SCHEMA,
+    AI_HUB_PARTNERS_SCHEMA.repo_key: AI_HUB_PARTNERS_SCHEMA,
+    AI_HUB_RESOURCES_SCHEMA.repo_key: AI_HUB_RESOURCES_SCHEMA,
+    AI_HUB_SOLUTIONS_SCHEMA.repo_key: AI_HUB_SOLUTIONS_SCHEMA,
+    AI_HUB_TOOLS_SCHEMA.repo_key: AI_HUB_TOOLS_SCHEMA,
 }
 
 
-def validate_metadata_schemas(target_repo_keys: set[str]) -> None:
-    """Ensure every target repository has a metadata schema (and vice versa)."""
+def validate_metadata_schemas(target_repos: dict) -> None:
+    """Ensure every target, or each of its content types, has a schema, and vice versa."""
+    expected: set[str] = set()
+    for key, cfg in target_repos.items():
+        if cfg.content_categories:
+            expected.update(category.schema_key for category in cfg.content_categories)
+        else:
+            expected.add(key)
     schema_keys = set(SCHEMAS)
-    missing = target_repo_keys - schema_keys
-    extra = schema_keys - target_repo_keys
+    missing = expected - schema_keys
+    extra = schema_keys - expected
     if missing:
         raise ValueError(
-            f'Missing metadata schema for target repo(s): {", ".join(sorted(missing))}',
+            f'Missing metadata schema for: {", ".join(sorted(missing))}',
         )
     if extra:
         raise ValueError(
-            f'Metadata schema(s) without a target repo entry: {", ".join(sorted(extra))}',
+            f'Metadata schema(s) without a target or content type: {", ".join(sorted(extra))}',
         )

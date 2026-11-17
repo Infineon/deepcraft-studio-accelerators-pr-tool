@@ -1,9 +1,11 @@
 import fnmatch
 import re
+import unicodedata
 from abc import ABC, abstractmethod
 from pathlib import Path
 
 from submission_exclusions import is_excluded_project_root_entry
+from studio_templates import is_studio_template_name
 
 COMMON_ROOT_FILES = ('README.md', 'metadata.json')
 
@@ -157,6 +159,11 @@ class AcceleratorLayout(ProjectLayout):
 
     def validate_project_name(self, project_name: str) -> None:
         validate_camel_case_project_name(project_name)
+        if is_studio_template_name(project_name):
+            raise ValueError(
+                f'Project name "{project_name}" is a DEEPCRAFT Studio template. '
+                'Rename the project folder, or pass --name with a name for this project.',
+            )
 
     def _validate_layout(self, project_name: str, project_path: Path) -> None:
         required_items = {f'{project_name}.improj', 'Data'}
@@ -193,6 +200,62 @@ class ModelZooPsocLayout(ProjectLayout):
         pass
 
 
+_CARD_NAME_PATTERN = re.compile(r'^[a-z0-9]([a-z0-9_-]*[a-z0-9])?$')
+
+
+def validate_card_directory_name(project_name: str) -> None:
+    """Card directory names are lowercase URL-safe identifiers, such as ``baby-cry-detection``."""
+    if not _CARD_NAME_PATTERN.fullmatch(project_name):
+        raise ValueError(
+            f'Card name "{project_name}" is not a lowercase URL-safe identifier. '
+            'Use letters, digits, "_" or "-", and start and end with a letter or digit.',
+        )
+
+
+_APOSTROPHES = "'\u2019\u2018\u201b\u02bc`"
+
+
+def card_directory_name_from_title(title: str) -> str:
+    """Build a URL-safe card folder name from a metadata title.
+
+    Accents are folded to ASCII letters. Apostrophes are removed so ``What's``
+    stays one word. ``&`` becomes ``and``. Other symbols become a single hyphen.
+    """
+    text = title.strip()
+    for mark in _APOSTROPHES:
+        text = text.replace(mark, '')
+    text = text.replace('&', ' and ')
+    pieces: list[str] = []
+    for char in text:
+        if unicodedata.category(char).startswith('S'):
+            pieces.append(' ')
+            continue
+        decomposed = unicodedata.normalize('NFKD', char)
+        pieces.append(''.join(item for item in decomposed if not unicodedata.combining(item)))
+    text = ''.join(pieces).casefold()
+    text = re.sub(r'[^a-z0-9]+', '-', text).strip('-')
+    if text.upper() in _WINDOWS_RESERVED_NAMES:
+        return ''
+    return text
+
+
+class AiHubCardLayout(ProjectLayout):
+    """A local folder that holds one AI Hub card's metadata.json."""
+
+    name = 'ai_hub_card_layout'
+
+    def validate_project_name(self, project_name: str) -> None:
+        validate_card_directory_name(project_name)
+
+    def validate(self, project_name: str, project_path: Path) -> None:
+        self.validate_project_name(project_name)
+        if not (project_path / 'metadata.json').is_file():
+            raise ValueError('metadata.json is missing from the project root directory.')
+
+    def _validate_layout(self, project_name: str, project_path: Path) -> None:
+        pass
+
+
 class MetadataOnlyLayout(ProjectLayout):
     """Safe project-name check only.
 
@@ -216,6 +279,7 @@ LAYOUTS: dict[str, ProjectLayout] = {
     AcceleratorLayout.name: AcceleratorLayout(),
     ModelZooPsocLayout.name: ModelZooPsocLayout(),
     MetadataOnlyLayout.name: MetadataOnlyLayout(),
+    AiHubCardLayout.name: AiHubCardLayout(),
 }
 
 

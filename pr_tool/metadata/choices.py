@@ -12,7 +12,6 @@ Autoselection (kit to device, type to workflow, sensor to domain) lives in
 import re
 from collections.abc import Iterable
 from dataclasses import dataclass
-from urllib.parse import urlparse
 
 from metadata.rules import (
     KIT_TO_DEVICE,
@@ -340,16 +339,14 @@ def brand_for_image(brand_image_id: str) -> Brand:
 
 
 def brand_url_error(value: str) -> str | None:
-    """Return a message when *value* is not an http(s) address with a domain.
+    """Return a message when *value* is not an absolute https address.
 
-    ``None`` means the address can be stored as ``brand_url``.
+    The same rule as a webpage link. The prompt adds ``https://`` when the
+    address has no scheme. ``None`` means it can be stored as ``brand_url``.
     """
-    text = (value or '').strip()
-    parsed = urlparse(text)
-    host = parsed.hostname or ''
-    if parsed.scheme.lower() in ('http', 'https') and '.' in host and ' ' not in text:
-        return None
-    return 'Enter an http(s) URL, for example https://acme.example.'
+    from metadata.link_prompt import link_url_error
+
+    return link_url_error(value or '')
 
 
 def is_known_brand_image(brand_image_id: str) -> bool:

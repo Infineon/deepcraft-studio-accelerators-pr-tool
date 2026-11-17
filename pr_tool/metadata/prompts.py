@@ -12,6 +12,7 @@ from metadata.choices import canonical_choice, match_choice
 
 _GREEN = '\033[32m'
 _YELLOW = '\033[33m'
+_BLUE = '\033[94m'
 _CYAN = '\033[36m'
 _GREY = '\033[90m'
 _MAGENTA = '\033[35m'
@@ -58,6 +59,11 @@ def paint_yellow(text: str) -> str:
     return _paint(text, _YELLOW)
 
 
+def paint_blue(text: str) -> str:
+    """Colour *text* blue (an address in a video or link recap)."""
+    return _paint(text, _BLUE)
+
+
 def paint_cyan(text: str) -> str:
     """Colour *text* cyan (the keys and list numbers the user types)."""
     return _paint(text, _CYAN)
@@ -80,6 +86,7 @@ def colour_key_line() -> str:
     return (
         f'  Color Code: {paint_green("green")} field names, '
         f'{paint_cyan("cyan")} choices, options, and the field counter, '
+        f'{paint_blue("blue")} links in a video or link recap, '
         f'{paint_yellow("yellow")} current values and warnings, '
         f'{paint_magenta("magenta")} others.'
     )
@@ -110,6 +117,15 @@ def set_field_progress(label: str | None, index: int = 0, total: int = 0) -> Non
     _field_progress = (label, index, total)
 
 
+def advance_field_progress(label: str) -> None:
+    """Show the next step number on *label*, keeping the same total."""
+    global _field_progress
+    if _field_progress is None:
+        return
+    _, index, total = _field_progress
+    _field_progress = (label, index + 1, total)
+
+
 def _progress_mark() -> str:
     """The ``(2/9)`` counter in cyan, or plain text when colour is off."""
     if _field_progress is None:
@@ -125,13 +141,17 @@ def field_progress_prefix() -> str:
 
 
 def _progress_suffix(text: str) -> str:
+    """The ``(4/15)`` mark when *text* is the field being collected.
+
+    A heading may add a note after the label, such as ``Published date (YYYY-MM-DD)``.
+    """
     if _field_progress is None:
         return ''
-    label = _field_progress[0]
+    label = _field_progress[0].casefold()
     folded = text.casefold()
-    if folded not in (label.casefold(), f'{label}(s)'.casefold()):
-        return ''
-    return f' {_progress_mark()}'
+    if folded in (label, f'{label}(s)') or folded.startswith(f'{label} '):
+        return f' {_progress_mark()}'
+    return ''
 
 
 def field_name(text: str) -> str:
@@ -181,7 +201,7 @@ def _menu_choice(key: str, text: str) -> str:
     The key is padded before it is coloured, so the description stays aligned
     on Windows, where the colour codes are not visible characters.
     """
-    label = 'Enter' if key == 'Enter' else f'{key}.'
+    label = 'Enter' if key == 'Enter' else ('-' if key == '-' else f'{key}.')
     return paint_cyan(f'  {label}'.ljust(12)) + text
 
 
@@ -271,12 +291,27 @@ def input_prefilled(prompt: str, text: str, read: Callable[[str], str] | None = 
             readline.set_startup_hook()
 
 
+def _field_heading(
+    name: str,
+    max_len: int | None,
+    hint: str | None,
+    aside: str | None = None,
+) -> str:
+    """The field name, its length limit, a note after a dash, and an optional line under the name."""
+    limit_line = f' (max {max_len} characters)' if max_len is not None else ''
+    aside_line = f' - {aside}' if aside else ''
+    heading = f'{field_name(name)}{limit_line}{aside_line}'
+    if hint:
+        heading += f'\n  {hint}'
+    return heading
+
+
 def input_suggested_text(
     name: str,
     suggestion: str,
     max_len: int | None = None,
     *,
-    note: str | None = None,
+    hint: str | None = None,
 ) -> str:
     """Ask for text with *suggestion* already on the input line.
 
@@ -285,10 +320,12 @@ def input_suggested_text(
     """
     suggestion = suggestion.strip()
     top_sep = _field_separator()
-    limit_line = f' (max {max_len} characters)' if max_len is not None else ''
-    prompt = f'{top_sep}\n{field_name(name)}{limit_line}\n: '
-    if note:
-        print(f'{constants.ICON_INFO} {note}')
+    prompt = (
+        f'{top_sep}\n'
+        f'{_field_heading(name, max_len, hint)}\n'
+        f'{_separator("-")}\n'
+        f': '
+    )
     while True:
         placed = queue_line_for_editing(suggestion)
         if not placed:
@@ -382,10 +419,17 @@ def _format_choices(choices: list[str]) -> str:
     return '\n'.join(rows)
 
 
-def input_str(name: str, max_len: int | None = None, default: str | None = None) -> str:
+def input_str(
+    name: str,
+    max_len: int | None = None,
+    default: str | None = None,
+    *,
+    hint: str | None = None,
+    aside: str | None = None,
+    reject: Callable[[str], str | None] | None = None,
+) -> str:
     top_sep = _field_separator()
     bottom_sep = _separator('-')
-    limit_line = f' (max {max_len} characters)' if max_len is not None else ''
     saved = (
         _saved_value_block(default, _saved_text_rows())
         if default
@@ -393,7 +437,7 @@ def input_str(name: str, max_len: int | None = None, default: str | None = None)
     )
     prompt = (
         f'{top_sep}\n'
-        f'{field_name(name)}{limit_line}\n'
+        f'{_field_heading(name, max_len, hint, aside)}\n'
         f'{saved}'
         f': '
     )
@@ -401,16 +445,22 @@ def input_str(name: str, max_len: int | None = None, default: str | None = None)
         value = input(prompt).strip()
         if default:
             if not value:
-                return default
-            value = _value_after_saved_menu(value, default)
-            if value is None:
-                continue
+                value = default
+            else:
+                value = _value_after_saved_menu(value, default)
+                if value is None:
+                    continue
         if not value:
-            warn(f'Value cannot be empty, please try again.')
+            warn('Value cannot be empty, please try again.')
             continue
         if max_len is not None and len(value) > max_len:
             warn(f'Value is more than {max_len} characters, please try again.')
             continue
+        if reject is not None:
+            error = reject(value)
+            if error:
+                warn(error)
+                continue
         return value
 
 
@@ -425,14 +475,19 @@ def confirm(question: str) -> bool:
         warn("Please answer 'y' or 'n'.")
 
 
-def _choice_menu(question: str, options: list[tuple[str, str]]) -> str:
-    """A question with menu rows, using the same rules as the other prompts."""
+def _choice_menu(question: str, options: list[tuple[str, str]], note: str | None = None) -> str:
+    """A question with menu rows, using the same rules as the other prompts.
+
+    *note* is one line shown under the question, above the rule.
+    """
     top_sep = _field_separator()
     bottom_sep = _separator('-')
     rows = '\n'.join(_menu_choice(key, text) for key, text in options)
+    note_line = f'{note}\n' if note else ''
     return (
         f'{top_sep}\n'
         f'{question}\n'
+        f'{note_line}'
         f'{bottom_sep}\n'
         f'  Choose an option:\n'
         f'{rows}\n'
@@ -453,10 +508,11 @@ def confirm_menu(question: str, *, yes: str, no: str) -> bool:
         warn("Please answer 'y' or 'n'.")
 
 
-def confirm_metadata(*, save_on_yes: bool = False) -> str:
+def confirm_metadata(*, save_on_yes: bool = False, note: str | None = None) -> str:
     """Returns ``'yes'``, ``'no'`` (modify), or ``'abort'``.
 
     The question is a menu. With *save_on_yes*, the yes row says it saves metadata.json.
+    *note* is shown under the question, for example where the file will be saved.
     """
     yes_text = 'Yes, save metadata.json' if save_on_yes else 'Yes, keep these values'
     prompt = _choice_menu(
@@ -466,6 +522,7 @@ def confirm_metadata(*, save_on_yes: bool = False) -> str:
             ('n', 'Modify the metadata'),
             ('a', 'Abort without saving'),
         ],
+        note=note,
     )
     while True:
         answer = input(prompt).strip().lower()
@@ -614,8 +671,13 @@ def input_grouped_choice(
     default: str | None = None,
     *,
     allow_custom: bool = True,
+    accept_default: bool = False,
 ) -> str:
-    """Prompt for one value from labelled choice groups (e.g. Infineon vs partner brands)."""
+    """Prompt for one value from labelled choice groups (e.g. Infineon vs partner brands).
+
+    ``accept_default`` prints the menu, with *default* shown as the current value,
+    and continues as if Enter had kept it.
+    """
     choices = [item for _, items in groups for item in items]
     choices_sub_list = _format_grouped_choices(groups)
     range_str = f'between 1 and {len(choices)}'
@@ -631,14 +693,17 @@ def input_grouped_choice(
         if allow_custom
         else f'type a number {range_str} or a listed name'
     )
-    prompt = (
+    shown = (
         f'{top_sep}\n'
         f'{field_name(name)} - {hint}\n'
         f'{_custom_value_note(allow_custom)}'
         f'{choices_sub_list}\n'
         f'{saved}'
-        f': '
     )
+    if accept_default and default:
+        print(shown, end='')
+        return default
+    prompt = f'{shown}: '
     while True:
         raw = input(prompt).strip()
         if default:
@@ -676,12 +741,16 @@ def input_choice(
     *,
     allow_custom: bool = True,
     coloured_name: bool = True,
+    allow_empty: bool = False,
 ) -> str:
     choices_sub_list = _format_choices(choices)
     range_str = f'between 1 and {len(choices)}'
     top_sep = _field_separator()
+    saved_rows = _saved_text_rows()
+    if allow_empty and default:
+        saved_rows = [*saved_rows, _menu_choice('-', 'Clear the value')]
     saved = (
-        _saved_value_block(default, _saved_text_rows())
+        _saved_value_block(default, saved_rows)
         if default
         else f'{_separator("-")}\n'
     )
@@ -691,6 +760,8 @@ def input_choice(
         if allow_custom
         else f'type a number {range_str} or a listed name'
     )
+    if allow_empty and not default:
+        hint += '. Press Enter to leave this empty'
     print(
         f'{top_sep}\n'
         f'{header_name} - {hint}\n'
@@ -699,6 +770,8 @@ def input_choice(
     )
     while True:
         raw = input(f'{saved}: ').strip()
+        if allow_empty and raw == '-':
+            return ''
         if default:
             if not raw:
                 return default
@@ -709,6 +782,8 @@ def input_choice(
             if raw is None:
                 continue
         if not raw:
+            if allow_empty:
+                return ''
             warn(f'Value cannot be empty, please try again.')
             continue
         number = _listed_number(raw, len(choices), allow_custom=allow_custom)
@@ -770,6 +845,40 @@ def _parse_multi_choice(
     return deduped
 
 
+def input_optional_str(
+    name: str,
+    *,
+    default: str | None = None,
+    hint: str = '',
+    validator: Callable[[str], str | None] | None = None,
+) -> str | None:
+    """Ask for optional text. Enter skips or keeps. ``-`` clears a saved value."""
+    top_sep = _field_separator()
+    note = f'\n  {hint}' if hint else ''
+    saved = _saved_value_block(default, _saved_text_rows()) if default else f'{_separator("-")}\n'
+    prompt = f'{top_sep}\n{field_name(name)}{note}\n{saved}: '
+    while True:
+        raw = input(prompt).strip()
+        if default:
+            if not raw:
+                return default
+            if raw == '-':
+                return None
+            value = _value_after_saved_menu(raw, default)
+            if value is None:
+                continue
+        else:
+            if not raw or raw == '-':
+                return None
+            value = raw
+        if validator is not None:
+            error = validator(value)
+            if error:
+                warn(error)
+                continue
+        return value
+
+
 def input_choices(
     name: str,
     choices: list[str],
@@ -779,6 +888,7 @@ def input_choices(
     prefer_listed: bool = False,
     coloured_name: bool = True,
     groups: list[tuple[str, list[str]]] | None = None,
+    allow_empty: bool = False,
 ) -> list[str]:
     if groups:
         choices = [item for _, items in groups for item in items]
@@ -787,8 +897,9 @@ def input_choices(
         choices_sub_list = _format_choices(choices)
     range_str = f'between 1 and {len(choices)}'
     top_sep = _field_separator()
+    saved_rows = _saved_text_rows()
     saved = (
-        _saved_value_block(', '.join(default), _saved_text_rows())
+        _saved_value_block(', '.join(default), saved_rows)
         if default
         else f'{_separator("-")}\n'
     )
@@ -799,10 +910,15 @@ def input_choices(
         hint = f'type one or more numbers {range_str} and/or names, comma-separated'
     else:
         hint = f'type one or more numbers {range_str} and/or listed names, comma-separated'
+    if allow_empty and not default:
+        empty_hint = '  Press Enter to leave the list empty.\n'
+    else:
+        empty_hint = ''
     shown_name = field_name(f'{name}(s)') if coloured_name else f'{name}(s)'.upper()
     print(
         f'{top_sep}\n'
         f'{shown_name} - {hint}\n'
+        f'{empty_hint}'
         f'{note}'
         f'{choices_sub_list}'
     )
@@ -818,6 +934,8 @@ def input_choices(
             if raw is None:
                 continue
         if not raw:
+            if allow_empty:
+                return []
             warn(f'Value cannot be empty, please try again.')
             continue
         chosen = _parse_multi_choice(
@@ -830,38 +948,6 @@ def input_choices(
         )
         if chosen is not None:
             return chosen
-
-
-def input_metric_value(label: str, default: str | None = None) -> str | None:
-    """Prompt for one metric value; empty input skips unless keeping a default."""
-    top_sep = _field_separator()
-    if default:
-        body = _saved_value_block(default, _saved_text_rows())
-    else:
-        rule = _separator('-')
-        body = (
-            f'{rule}\n'
-            f'  Choose an option:\n'
-            f'{_menu_choice("Enter", "Skip this metric")}\n'
-            f'{rule}\n'
-        )
-    prompt = (
-        f'{top_sep}\n'
-        f'{field_name(label)}\n'
-        f'{body}'
-        f': '
-    )
-    while True:
-        value = input(prompt).strip()
-        if default:
-            if not value:
-                return default
-            value = _value_after_saved_menu(value, default)
-            if value is None:
-                continue
-        if not value:
-            return default
-        return value
 
 
 def register_cli_text(

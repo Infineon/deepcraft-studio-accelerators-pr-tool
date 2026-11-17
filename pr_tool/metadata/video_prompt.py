@@ -11,10 +11,12 @@ from metadata.prompts import (
     _menu_choice,
     _separator,
     field_name,
+    format_custom_choice_value,
     input_prefilled,
+    paint_blue,
     paint_yellow,
 )
-from metadata.link_check import video_link_response_error
+from metadata.link_check import ensure_https_scheme, video_link_response_error, youtube_video_title
 from metadata.video_link import video_link_error
 
 
@@ -53,7 +55,7 @@ def _normalize_videos(value: Any) -> list[dict] | None:
         link = entry.get('link')
         if not all(isinstance(item, str) and item.strip() for item in (title, description, link)):
             continue
-        title = normalize_video_text(title)
+        title = format_custom_choice_value(normalize_video_text(title))
         description = normalize_video_text(description)
         if not title or not description:
             continue
@@ -104,8 +106,12 @@ def _collect_text(name: str, default: str | None, max_len: int) -> str:
             _warn('Press Enter to keep it, or type 1 to modify it. Please try again.')
             continue
         elif not raw and default and len(default) <= max_len:
+            if name == 'Video title':
+                return format_custom_choice_value(default)
             return default
         value = normalize_video_text(raw)
+        if name == 'Video title':
+            value = format_custom_choice_value(value)
         if not value:
             _warn('Value cannot be empty, please try again.')
             continue
@@ -156,9 +162,10 @@ def _collect_video_link(default: str | None = None) -> str | None:
         if not link:
             error = 'Value cannot be empty, please try again.'
         else:
-            error = video_link_error(link) or video_link_response_error(link.strip())
+            link = ensure_https_scheme(link)
+            error = video_link_error(link) or video_link_response_error(link)
         if error is None:
-            return link.strip()
+            return link
         attempts += 1
         if attempts >= _LINK_TRIES:
             _warn(f'Returning to the Videos prompt. (attempt {attempts} of {_LINK_TRIES})')
@@ -207,8 +214,11 @@ def _choose_video(current: dict | None, *, several: bool) -> str:
         details = [
             f'  Title: {current["title"]}',
             f'  Description: {current["description"]}',
-            f'  Link: {current["link"]}',
+            f'  Link: {paint_blue(current["link"])}',
         ]
+        youtube_title = youtube_video_title(current['link'])
+        if youtube_title:
+            details.append(f'  YouTube title: {youtube_title}')
         options = [
             _choice('Enter', 'Keep this video'),
             _choice('1', 'Modify the video'),
@@ -250,6 +260,10 @@ def collect_videos(previous: dict) -> list[dict] | None:
     The prompt says to add a video link. Enter means there is no video to add
     when none is saved, and keeps a saved video.
     ``1`` adds or modifies a video, and ``2`` removes a saved video.
+    After an address is approved, the title, description, and link are shown
+    again with keep, modify, and remove. A YouTube link also shows the title
+    YouTube reports, so the address can be checked against it. That title is
+    not stored. The address is shown in blue.
     Three attempts on the video link, empty, rejected, or not responding, return to this prompt.
     ``None`` means ``videos`` is left out of ``metadata.json``.
     """
@@ -274,4 +288,5 @@ def collect_videos(previous: dict) -> list[dict] | None:
         link = _collect_video_link(current['link'] if current else None)
         if link is None:
             continue
-        return [{'title': title, 'description': description, 'link': link}]
+        current = {'title': title, 'description': description, 'link': link}
+        saved = [current]

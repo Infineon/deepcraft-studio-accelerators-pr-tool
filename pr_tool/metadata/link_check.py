@@ -8,16 +8,30 @@ Used when a brand URL or a video link is entered.
 * YouTube and Vimeo video links: a plain request is not enough, because YouTube
   answers HTTP 200 for a video that does not exist. The provider's oEmbed
   endpoint is asked instead. It answers with an error for a video that is not
-  there.
+  there. A YouTube reply that names the video is remembered, so the video
+  recap can show that title.
 """
 
 from __future__ import annotations
 
+import json
 import urllib.error
 import urllib.parse
 import urllib.request
 
 import constants
+
+
+def ensure_https_scheme(value: str) -> str:
+    """Add ``https://`` when an address has no scheme.
+
+    ``http://`` and ``https://`` are left as typed.
+    """
+    text = value.strip()
+    if not text or '://' in text:
+        return text
+    return f'https://{text}'
+
 
 _TIMEOUT_SECONDS = 10
 _USER_AGENT = 'DEEPCRAFT-PR-Tool'
@@ -56,7 +70,8 @@ def video_link_response_error(url: str) -> str | None:
     """Return a message when a video link does not point at a video. ``None`` means it does.
 
     YouTube and Vimeo are asked through their oEmbed endpoints. Other hosts
-    fall back to :func:`link_response_error`.
+    fall back to :func:`link_response_error`. A YouTube title in the reply is
+    kept for the video recap.
     """
     provider = _oembed_provider(url)
     if provider is None:
@@ -64,16 +79,84 @@ def video_link_response_error(url: str) -> str | None:
     name, endpoint = provider
     _print_checking(f'Checking that the {name} video exists...')
     try:
-        status = _status(endpoint + urllib.parse.quote(url, safe=''), 'GET')
+        status, body = _exchange(
+            endpoint + urllib.parse.quote(url, safe=''),
+            'GET',
+            read_body=True,
+        )
     except (urllib.error.URLError, TimeoutError, OSError):
         return _VIDEO_UNREACHABLE
     if status < 400:
+        if name == 'YouTube':
+            _remember_youtube_title(url, body)
         _print_approved(f'Video approved, the {name} video exists.')
         return None
     return (
         f'The {name} video was not found (HTTP {status}). '
         'Check the link and try again.'
     )
+
+
+# Titles YouTube has already reported, keyed by :func:`video_link_key`.
+_youtube_titles: dict[str, str | None] = {}
+
+
+def clear_youtube_titles() -> None:
+    """Drop remembered YouTube titles. Tests use this to start from an empty cache."""
+    _youtube_titles.clear()
+
+
+def youtube_video_title(url: str) -> str | None:
+    """The title YouTube reports for *url*, or None for another host or a failed lookup.
+
+    A title read while approving the link is reused. A saved video that has not
+    been checked in this run is looked up once.
+    """
+    provider = _oembed_provider(url)
+    if provider is None or provider[0] != 'YouTube':
+        return None
+    from metadata.video_link import video_link_key
+
+    key = video_link_key(url)
+    if key in _youtube_titles:
+        return _youtube_titles[key]
+    _print_checking('Reading the YouTube title...')
+    _name, endpoint = provider
+    try:
+        status, body = _exchange(
+            endpoint + urllib.parse.quote(url, safe=''),
+            'GET',
+            read_body=True,
+        )
+    except (urllib.error.URLError, TimeoutError, OSError):
+        _youtube_titles[key] = None
+        return None
+    title = _oembed_title(body) if status < 400 else None
+    _youtube_titles[key] = title
+    return title
+
+
+def _remember_youtube_title(url: str, body: bytes) -> None:
+    title = _oembed_title(body)
+    if not title:
+        return
+    from metadata.video_link import video_link_key
+
+    _youtube_titles[video_link_key(url)] = title
+
+
+def _oembed_title(body: bytes) -> str | None:
+    if not body:
+        return None
+    try:
+        payload = json.loads(body.decode('utf-8'))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    title = payload.get('title') if isinstance(payload, dict) else None
+    if not isinstance(title, str):
+        return None
+    title = ' '.join(title.split())
+    return title or None
 
 
 def _oembed_provider(url: str) -> tuple[str, str] | None:
@@ -93,6 +176,11 @@ def _print_approved(message: str) -> None:
 
 
 def _status(url: str, method: str) -> int:
+    status, _body = _exchange(url, method)
+    return status
+
+
+def _exchange(url: str, method: str, *, read_body: bool = False) -> tuple[int, bytes]:
     request = urllib.request.Request(
         url,
         method=method,
@@ -100,6 +188,15 @@ def _status(url: str, method: str) -> int:
     )
     try:
         with urllib.request.urlopen(request, timeout=_TIMEOUT_SECONDS) as response:
-            return int(response.status)
+            body = _read_body(response) if read_body else b''
+            return int(response.status), body
     except urllib.error.HTTPError as exc:
-        return int(exc.code)
+        return int(exc.code), b''
+
+
+def _read_body(response) -> bytes:
+    read = getattr(response, 'read', None)
+    if not callable(read):
+        return b''
+    data = read()
+    return data if isinstance(data, bytes) else b''
