@@ -11,15 +11,27 @@ from typing import Any
 
 import constants
 from metadata import choices as c
-from metadata.choices import match_choice, normalize_project_types
+from metadata.choices import (
+    PERFORMANCE_METRIC_LABELS,
+    SOLUTION_METRIC_LABELS,
+    match_choice,
+    normalize_project_types,
+)
 from metadata.link_prompt import CONTACT_LABEL, collect_contact, collect_links, links_issue
 from metadata.prompts import (
+    _field_heading,
+    _field_separator,
+    _menu_choice,
+    _saved_text_rows,
+    _saved_value_block,
+    _separator,
     advance_field_progress,
     field_progress_prefix,
     format_custom_choice_value,
     input_choices,
-    input_optional_str,
+    input_prefilled,
     input_str,
+    warn,
 )
 from metadata.rules import SUITE_IMAGE_NAME, workflow_for_types
 from metadata.schema import FieldSpec, MetadataSchema
@@ -70,12 +82,6 @@ RESOURCE_CONTENT_TYPE = (
     'Video',
     'Webinar',
     'White Paper',
-)
-
-SOLUTION_METRIC_LABELS = (
-    'RW Memory Usage (KiB)',
-    'RO Memory Usage (KiB)',
-    'Inference Time (ms)',
 )
 
 # Returned by collect_extra_field when the field belongs to a shared schema.
@@ -177,22 +183,60 @@ def collect_card_id(field: FieldSpec, project_name: str) -> str:
     return project_name
 
 
+def _read_date(current: str | None) -> str | None:
+    """Ask for ``YYYY-MM-DD``. Enter returns to the date menu."""
+    while True:
+        raw = input_prefilled(': ', current).strip() if current else input(': ').strip()
+        if not raw:
+            return None
+        error = date_error(raw)
+        if error is None:
+            return raw.strip()
+        warn(error)
+
+
 def collect_date(field: FieldSpec, previous: dict) -> str | None:
+    """Ask for a date. An optional date uses the same menu as the other fields.
+
+    Enter leaves it out, or keeps a saved date. ``1`` enters or modifies it,
+    and ``2`` removes a saved date.
+    """
     prev_value = previous.get(field.key)
-    default = prev_value if isinstance(prev_value, str) and not date_error(prev_value) else None
+    current = prev_value if isinstance(prev_value, str) and not date_error(prev_value) else None
+    name = f'{field.label} (YYYY-MM-DD)'
     if field.required:
         while True:
-            value = input_str(f'{field.label} (YYYY-MM-DD)', default=default)
+            value = input_str(name, default=current)
             error = date_error(value)
             if error is None:
                 return value.strip()
             print(f'{constants.ICON_WARNING} {error}')
-    return input_optional_str(
-        f'{field.label} (YYYY-MM-DD)',
-        default=default,
-        hint='Optional. Example: 2026-01-14. Type - to clear a saved date.',
-        validator=date_error,
-    )
+    hint = 'Example: 2026-01-14.'
+    while True:
+        heading = _field_heading(name, None, hint)
+        if current:
+            rows = [*_saved_text_rows(), _menu_choice('2', 'Remove the date')]
+            saved = _saved_value_block(current, rows)
+            retry = 'Press Enter to keep it, type 1 to modify it, or type 2 to remove it.'
+        else:
+            rows = [
+                _menu_choice('Enter', 'No date to add'),
+                _menu_choice('1', 'Enter a date'),
+            ]
+            saved = f'{_separator("-")}\n  Choose an option:\n' + '\n'.join(rows) + f'\n{_separator("-")}\n'
+            retry = 'Press Enter if there is no date to add, or type 1 to enter a date.'
+        raw = input(f'{_field_separator()}\n{heading}\n{saved}: ').strip()
+        if not raw:
+            return current
+        if raw == '1':
+            entered = _read_date(current)
+            if entered:
+                current = entered
+            continue
+        if current and raw == '2':
+            current = None
+            continue
+        warn(f'{retry} Please try again.')
 
 
 def _noted(message: str) -> str:
@@ -595,20 +639,22 @@ def build_ai_hub_schemas(
     resources = MetadataSchema(
         repo_key='extra-content-resources',
         key_order=_resources_file_order(),
-        fields=_card_fields(
-            'Resources',
-            shared,
-            videos_field,
-            FieldSpec('id', 'Id', 'card_id'),
-            FieldSpec('published_date', 'Published date', 'date', required=False),
+        fields=(
             FieldSpec(
                 'content_type', 'Resource type', 'single_choice',
                 choices=RESOURCE_CONTENT_TYPE,
                 allow_custom=False,
             ),
-            sensors_empty=True,
-            domain_empty=True,
-            use_case_empty=True,
+            *_card_fields(
+                'Resources',
+                shared,
+                videos_field,
+                FieldSpec('id', 'Id', 'card_id'),
+                FieldSpec('published_date', 'Published date', 'date', required=False),
+                sensors_empty=True,
+                domain_empty=True,
+                use_case_empty=True,
+            ),
         ),
     )
     solutions = MetadataSchema(
@@ -620,7 +666,7 @@ def build_ai_hub_schemas(
             FieldSpec(
                 'metrics', 'Performance metrics', 'metrics',
                 required=False,
-                choices=SOLUTION_METRIC_LABELS,
+                choices=PERFORMANCE_METRIC_LABELS,
                 metric_note=True,
             ),
             include_workflow=False,

@@ -25,7 +25,7 @@ from metadata.extra_content import (
 from metadata.choices import (
     Brand,
     INFINEON_BRAND,
-    METRIC_LABELS,
+    PERFORMANCE_METRIC_LABELS,
     NEW_BRAND_PARTNER_LABEL,
     PARTNER_BRANDS,
     accelerator_links,
@@ -67,6 +67,7 @@ from metadata.long_description_prompt import input_html_text
 from metadata.metric_prompt import collect_metrics
 from metadata.prompts import (
     field_progress_prefix,
+    confirm,
     input_choice,
     input_choices,
     input_grouped_choice,
@@ -552,11 +553,16 @@ def _collect_brand(
         ('Partner brand:', [brand.label for brand in PARTNER_BRANDS]),
         ('Other:', [NEW_BRAND_PARTNER_LABEL]),
     ]
-    label = input_grouped_choice(
-        'Brand', groups, default=default, allow_custom=False, accept_default=partner,
-    )
-    if label == NEW_BRAND_PARTNER_LABEL:
-        return _collect_custom_brand(previous, keep_saved=partner, partner=partner)
+    while True:
+        label = input_grouped_choice(
+            'Brand', groups, default=default, allow_custom=False, accept_default=partner,
+        )
+        if label != NEW_BRAND_PARTNER_LABEL:
+            break
+        # Partners keeps this choice on purpose. Elsewhere, option 4 is easy to hit
+        # by mistake, so ask before the image and URL questions start.
+        if partner or confirm('You chose to add a new brand/partner. Do you want to continue?'):
+            return _collect_custom_brand(previous, keep_saved=partner, partner=partner)
     clear_card_image()
     for brand in (INFINEON_BRAND, *PARTNER_BRANDS):
         if brand.label == label:
@@ -840,8 +846,8 @@ def _collect_field(
     if field.kind == 'metrics':
         return collect_metrics(
             previous,
-            labels=field.choices or METRIC_LABELS,
-            with_note=field.metric_note,
+            labels=field.choices or PERFORMANCE_METRIC_LABELS,
+            with_note=True,
             title=field.label,
         )
     raise ValueError(f'Unknown field kind: {field.kind!r}')

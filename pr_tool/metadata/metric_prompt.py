@@ -1,8 +1,10 @@
 """Interactive prompt for optional performance metrics.
 
-A solution card has a fixed set of figures. Enter skips or keeps them, and 1
-asks for each value in order. Model-zoo metrics use the link menu instead:
-Enter skips or keeps, and a number adds, modifies, or removes one label.
+Enter skips or keeps the set. ``1`` asks for each figure in order, and Enter
+on a figure skips it. ``2`` removes the set. A value is a number, except
+Input Layer and Output Layer, which are shapes such as ``1x384x384x3``.
+Each figure except Input Layer and Output Layer then takes an optional note on
+how it was measured.
 """
 
 from __future__ import annotations
@@ -11,28 +13,32 @@ import re
 from typing import Any
 
 import constants
-from metadata.choices import METRIC_LABELS
+from metadata.choices import PERFORMANCE_METRIC_LABELS
 from metadata.prompts import (
     _field_separator,
     _menu_choice,
     _separator,
     field_name,
-    input_choice,
-    input_str,
+    input_optional_str,
     paint_yellow,
+    recap_entry_indent,
 )
 from metadata.schema import FieldSpec
 
-_METRIC_INTRO = '  Add performance figures. Each one uses a listed label and a value.'
-_FIXED_INTRO = (
-    '  Enter a value for each figure, then a short note on how it was measured.'
+_METRIC_INTRO = (
+    '  Enter a value for each figure. Most figures then take an optional note on how '
+    'it was measured. Press Enter to skip a figure or its note.'
 )
-_MENU_HINT = 'add a performance metric (recommended)'
 _FIXED_MENU_HINT = 'add a performance metric'
+_SKIP_HINT = 'Press Enter to skip this metric.'
+_NOTE_SKIP_HINT = 'Press Enter to skip this note.'
 _NOTE_EXAMPLE = 'Measured on PSOC\u2122 6 (int8x8) | ml-middleware and TFLM excluded'
 _NOTE_ASIDE = f'Describe how this value was measured, for example {_NOTE_EXAMPLE}.'
 _METRIC_NUMBER = re.compile(r'\d+(?:\.\d+)?')
+_METRIC_SHAPE = re.compile(r'\d+(?:x\d+)+', re.IGNORECASE)
+_SHAPE_LABELS = frozenset({'Input Layer', 'Output Layer'})
 _NUMBER_WARNING = 'Enter a number, such as 73. Please try again.'
+_SHAPE_WARNING = 'Enter a shape, such as 1x384x384x3. Please try again.'
 
 # Shown under each label when it is chosen. Every predefined label needs one.
 METRIC_DESCRIPTIONS: dict[str, str] = {
@@ -65,39 +71,24 @@ def metrics_by_label(metrics: list[dict] | None) -> dict[str, str]:
 def collect_metrics(
     previous: dict,
     *,
-    labels: tuple[str, ...] = METRIC_LABELS,
-    with_note: bool = False,
+    labels: tuple[str, ...] = PERFORMANCE_METRIC_LABELS,
+    with_note: bool = True,
     title: str = 'Performance metrics',
 ) -> list[dict] | None:
     """Ask for performance metrics. Enter with none leaves the field out of the file.
 
-    With a note, the labels are a fixed set: ``1`` asks for every value in
-    order. Otherwise ``1`` adds one label, ``2`` modifies one, and ``3``
-    removes one. Each label can be saved once. ``None`` means no metrics.
+    ``1`` asks for every label in order. Enter on a figure skips it. ``2``
+    removes the set. A note follows each entered value except a shape. ``None``
+    means no metrics.
     """
-    metrics = _saved_metrics(previous.get('metrics'), with_note=with_note)
-    if with_note:
-        return _collect_fixed_metrics(metrics, labels, title=title, with_note=with_note)
-    intro = _METRIC_INTRO
-    while True:
-        action, index = _choose_metrics(
-            metrics, labels, title=title, intro=intro, with_note=with_note,
-        )
-        if action == 'keep':
-            return metrics or None
-        if action == 'add':
-            metric = _collect_one_metric(None, labels, metrics, with_note=with_note)
-            if metric is not None:
-                metrics.append(metric)
-            continue
-        if action == 'remove':
-            del metrics[index]
-            continue
-        metric = _collect_one_metric(
-            metrics[index], labels, metrics, with_note=with_note,
-        )
-        if metric is not None:
-            metrics[index] = metric
+    metrics = _saved_metrics(previous.get('metrics'))
+    return _collect_fixed_metrics(
+        metrics,
+        labels,
+        title=title,
+        intro=_METRIC_INTRO,
+        with_note=with_note,
+    )
 
 
 def metrics_issue(metadata: dict, spec: FieldSpec) -> list[tuple[str, str]]:
@@ -110,7 +101,7 @@ def metrics_issue(metadata: dict, spec: FieldSpec) -> list[tuple[str, str]]:
         return []
     if not isinstance(metrics, list) or not metrics:
         return [('other', f'{key} must be a non-empty list when present')]
-    allowed = tuple(spec.choices) if spec.choices else METRIC_LABELS
+    allowed = tuple(spec.choices) if spec.choices else PERFORMANCE_METRIC_LABELS
     allowed_set = set(allowed)
     stored: list[dict] = []
     seen: set[str] = set()
@@ -134,16 +125,19 @@ def metrics_issue(metadata: dict, spec: FieldSpec) -> list[tuple[str, str]]:
         if not isinstance(value, str) or not value.strip():
             issues.append(('missing', f'{key}[{index}] missing or empty value'))
             value = ''
-        elif spec.metric_note and _reject_metric_number(value.strip()):
-            issues.append(('other', f'{key}[{index}] value {value.strip()!r} must be a number'))
-        if spec.metric_note:
-            note = entry.get('note')
-            if not isinstance(note, str) or not note.strip():
-                issues.append(('missing', f'{key}[{index}] missing or empty note'))
+        elif (
+            isinstance(label, str)
+            and label in allowed_set
+            and (error := metric_value_error(label, value.strip()))
+        ):
+            issues.append(('other', f'{key}[{index}] value {value.strip()!r}: {error}'))
+        note = entry.get('note')
+        if note is not None and (not isinstance(note, str) or not note.strip()):
+            issues.append(('other', f'{key}[{index}] note must be text when present'))
         if not issues and isinstance(label, str) and isinstance(value, str):
             item = {'label': label, 'value': value.strip()}
-            if spec.metric_note:
-                item['note'] = entry['note'].strip()
+            if isinstance(note, str) and note.strip() and _takes_note(label):
+                item['note'] = note.strip()
             stored.append(item)
     if issues:
         return issues
@@ -151,7 +145,13 @@ def metrics_issue(metadata: dict, spec: FieldSpec) -> list[tuple[str, str]]:
     return []
 
 
-def _saved_metrics(value: Any, *, with_note: bool) -> list[dict]:
+def _takes_note(label: str) -> bool:
+    """Shape figures are self-explanatory, so only the other figures take a note."""
+    return label not in _SHAPE_LABELS
+
+
+def _saved_metrics(value: Any) -> list[dict]:
+    """Keep each saved value. A note is included when the file already has one."""
     if not isinstance(value, list):
         return []
     metrics: list[dict] = []
@@ -165,20 +165,17 @@ def _saved_metrics(value: Any, *, with_note: bool) -> list[dict]:
         if not isinstance(raw_value, str) or not raw_value.strip():
             continue
         item = {'label': label, 'value': raw_value.strip()}
-        if with_note:
-            note = entry.get('note')
-            if not isinstance(note, str) or not note.strip():
-                continue
+        note = entry.get('note')
+        if _takes_note(label) and isinstance(note, str) and note.strip():
             item['note'] = note.strip()
         metrics.append(item)
     return metrics
 
 
-def _open_labels(labels: tuple[str, ...], metrics: list[dict], current: str | None) -> list[str]:
-    used = {item['label'] for item in metrics}
-    if current is not None:
-        used.discard(current)
-    return [label for label in labels if label not in used]
+def _in_prompt_order(metrics: list[dict], labels: tuple[str, ...]) -> list[dict]:
+    """List saved figures in the prompt order. Input Layer and Output Layer are last."""
+    rank = {label: index for index, label in enumerate(labels)}
+    return sorted(metrics, key=lambda item: rank.get(item['label'], len(rank)))
 
 
 def _collect_fixed_metrics(
@@ -186,12 +183,14 @@ def _collect_fixed_metrics(
     labels: tuple[str, ...],
     *,
     title: str,
+    intro: str,
     with_note: bool,
 ) -> list[dict] | None:
     """Ask for every listed figure in order. Enter keeps or skips the set."""
     while True:
+        metrics = _in_prompt_order(metrics, labels)
         action = _choose_fixed_metrics(
-            metrics, title=title, intro=_FIXED_INTRO, with_note=with_note,
+            metrics, title=title, intro=intro, with_note=with_note,
         )
         if action == 'keep':
             return metrics or None
@@ -212,19 +211,31 @@ def _ask_fixed_values(
     collected: list[dict] = []
     for label in labels:
         current = saved.get(label)
-        value = input_str(
+        value = input_optional_str(
             label,
             default=current['value'] if current else None,
+            hint='' if current else _SKIP_HINT,
             aside=METRIC_DESCRIPTIONS.get(label),
-            reject=_reject_metric_number,
+            validator=lambda text, metric_label=label: metric_value_error(metric_label, text),
+            clear_label='Remove the metric',
+            clear_key='2',
         )
+        if not value:
+            continue
         entry = {'label': label, 'value': value}
-        if with_note:
-            entry['note'] = input_str(
-                'Note',
-                default=current.get('note') if current else None,
+        if with_note and _takes_note(label):
+            saved_note = current.get('note') if current else None
+            note = input_optional_str(
+                f'Note for {label}',
+                default=saved_note,
+                hint='' if saved_note else _NOTE_SKIP_HINT,
                 aside=_NOTE_ASIDE,
+                clear_label='Remove the note',
+                clear_key='2',
+                nested=True,
             )
+            if note:
+                entry['note'] = note
         collected.append(entry)
     return collected
 
@@ -241,11 +252,11 @@ def _choose_fixed_metrics(
         if metrics:
             options = [
                 _menu_choice('Enter', 'Keep these metrics'),
-                _menu_choice('1', 'Change the metrics'),
+                _menu_choice('1', 'Modify the metrics'),
                 _menu_choice('2', 'Remove the metrics'),
             ]
             prompt = 'Choice (Enter, 1, or 2): '
-            retry = 'Press Enter to keep them, 1 to change them, or 2 to remove them.'
+            retry = 'Press Enter to keep them, 1 to modify them, or 2 to remove them.'
         else:
             options = [
                 _menu_choice('Enter', 'No metric to add'),
@@ -267,41 +278,20 @@ def _choose_fixed_metrics(
         _metric_warn(f'{retry} Please try again.')
 
 
-def _collect_one_metric(
-    current: dict | None,
-    labels: tuple[str, ...],
-    metrics: list[dict],
-    *,
-    with_note: bool,
-) -> dict | None:
-    """Collect one metric. ``None`` returns to the metric menu."""
-    choices = _open_labels(labels, metrics, current['label'] if current else None)
-    if not choices:
-        _metric_warn('Every listed metric is already saved.')
-        return None
-    label = input_choice(
-        'Metric',
-        choices,
-        default=current['label'] if current and current['label'] in choices else None,
-        allow_custom=False,
-    )
-    value = input_str(
-        label,
-        default=current['value'] if current else None,
-        aside=METRIC_DESCRIPTIONS.get(label),
-    )
-    entry = {'label': label, 'value': value}
-    if with_note:
-        entry['note'] = input_str(
-            'Note',
-            default=current.get('note') if current else None,
-            aside=_NOTE_ASIDE,
-        )
-    return entry
+def metric_value_error(label: str, value: str) -> str | None:
+    """Return a warning when *value* is not allowed for *label*.
+
+    Input Layer and Output Layer take a shape. Every other metric takes a number.
+    """
+    if label in _SHAPE_LABELS:
+        if _METRIC_SHAPE.fullmatch(value):
+            return None
+        return _SHAPE_WARNING
+    return _reject_metric_number(value)
 
 
 def _reject_metric_number(value: str) -> str | None:
-    """Return a warning when a solution metric value is not a plain number."""
+    """Return a warning when *value* is not a plain number."""
     if _METRIC_NUMBER.fullmatch(value):
         return None
     return _NUMBER_WARNING
@@ -311,52 +301,6 @@ def _metric_warn(message: str) -> None:
     print(paint_yellow(f'{constants.ICON_WARNING} {message}'))
 
 
-def _choose_metrics(
-    metrics: list[dict],
-    labels: tuple[str, ...],
-    *,
-    title: str,
-    intro: str,
-    with_note: bool,
-) -> tuple[str, int]:
-    """Return ``keep``, ``add``, ``modify``, or ``remove``, and a metric index."""
-    can_add = bool(_open_labels(labels, metrics, None))
-    while True:
-        if metrics:
-            options = [_menu_choice('Enter', 'Keep these metrics')]
-            if can_add:
-                options.append(_menu_choice('1', 'Add a metric'))
-            options.extend([
-                _menu_choice('2', 'Modify a metric'),
-                _menu_choice('3', 'Remove a metric'),
-            ])
-            retry = (
-                'Press Enter to keep them, 1 to add, 2 to modify, or 3 to remove.'
-                if can_add
-                else 'Press Enter to keep them, 2 to modify, or 3 to remove.'
-            )
-        else:
-            options = [
-                _menu_choice('Enter', 'No metric to add'),
-                _menu_choice('1', 'Add a metric'),
-            ]
-            retry = 'Press Enter if there is no metric to add, or type 1 to add a metric.'
-        _show_metric_menu(metrics, options, title=title, intro=intro, with_note=with_note)
-        raw = input('Choice (Enter, 1, 2, or 3): ' if metrics else 'Choice (Enter or 1): ').strip()
-        if not raw:
-            return 'keep', 0
-        if not metrics and raw == '1':
-            return 'add', 0
-        if metrics and raw == '1' and can_add:
-            return 'add', 0
-        if metrics and raw in ('2', '3'):
-            index = 0 if len(metrics) == 1 else _metric_index(len(metrics))
-            if index is None:
-                continue
-            return ('modify' if raw == '2' else 'remove', index)
-        _metric_warn(f'{retry} Please try again.')
-
-
 def _show_metric_menu(
     metrics: list[dict],
     options: list[str],
@@ -364,7 +308,7 @@ def _show_metric_menu(
     title: str,
     intro: str,
     with_note: bool,
-    hint: str = _MENU_HINT,
+    hint: str = _FIXED_MENU_HINT,
 ) -> None:
     rule = _separator('-')
     print(_field_separator())
@@ -373,21 +317,15 @@ def _show_metric_menu(
     print(rule)
     if not metrics and intro:
         print(intro)
-    for number, metric in enumerate(metrics, start=1):
-        print(f'  {number}. {metric["label"]}')
-        print(f'     {metric["value"]}')
-        if with_note:
-            print(f'     {metric["note"]}')
+    for index, metric in enumerate(metrics, start=1):
+        if index > 1:
+            print(rule)
+        # The number starts the line. A note lines up under the figure's name.
+        print(f'{index}. {metric["label"]}: {metric["value"]}')
+        if with_note and metric.get('note'):
+            print(f'{recap_entry_indent(index)}Note: {metric["note"]}')
     print(rule)
     print('  Choose an option:')
     for option in options:
         print(option)
     print(rule)
-
-
-def _metric_index(count: int) -> int | None:
-    raw = input(f'Metric number (1 to {count}): ').strip()
-    if raw.isdigit() and 1 <= int(raw) <= count:
-        return int(raw) - 1
-    _metric_warn(f'Type a number between 1 and {count}.')
-    return None

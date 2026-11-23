@@ -270,6 +270,13 @@ def normalize_project_types(value: str | list[str] | None) -> list[str]:
     return expanded
 
 
+# Solutions figures. They come first when the two lists are joined.
+SOLUTION_METRIC_LABELS = (
+    'RW Memory Usage (KiB)',
+    'RO Memory Usage (KiB)',
+    'Inference Time (ms)',
+)
+
 # Predefined metric labels for model-zoo-psoc metadata.json (values are prompted).
 METRIC_LABELS = (
     'Inference Time (ms)',
@@ -279,6 +286,21 @@ METRIC_LABELS = (
     'Compute (MC)',
     'Energy (mJ)',
     'Scratch Pad Size (MB)',
+)
+
+# One list for every content type that asks for metrics, in prompt order.
+# Solutions figures come first, then the Model Zoo PSOC figures. Inference Time
+# is shared and is asked once, in the Solutions place.
+PERFORMANCE_METRIC_LABELS = (
+    'RW Memory Usage (KiB)',
+    'RO Memory Usage (KiB)',
+    'Inference Time (ms)',
+    'Model Weight (MB)',
+    'Scratch Pad Size (MB)',
+    'Compute (MC)',
+    'Energy (mJ)',
+    'Input Layer',
+    'Output Layer',
 )
 
 @dataclass(frozen=True)

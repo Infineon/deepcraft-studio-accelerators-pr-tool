@@ -82,7 +82,12 @@ MODEL_ZOO_PSOC_SCHEMA = MetadataSchema(
     fields=_SHARED_FIELDS + (
         _VIDEOS_FIELD,
         FieldSpec('links', 'Project links', 'model_zoo_psoc_links'),
-        FieldSpec('metrics', 'Performance metrics', 'metrics', required=False),
+        FieldSpec(
+            'metrics', 'Performance metrics', 'metrics',
+            required=False,
+            choices=c.PERFORMANCE_METRIC_LABELS,
+            metric_note=True,
+        ),
     ),
 )
 

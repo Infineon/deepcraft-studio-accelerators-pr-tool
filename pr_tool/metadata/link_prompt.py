@@ -1,13 +1,16 @@
 """Interactive prompt for optional webpage links.
 
 The menu follows the video prompt: Enter skips or keeps, and a number adds,
-modifies, or removes a link. Heading and sub-heading use the same checks as
-title and description. The address is an absolute https page, not a video.
+modifies, or removes a link. The prompt asks for a link title and a link
+description. They are stored as heading and sub-heading. A second link must
+use a different address. The address is an absolute https page, not a video.
 """
 
 from __future__ import annotations
 
+import ipaddress
 from typing import Any
+from urllib.parse import urlparse
 
 import constants
 from metadata.link_check import ensure_https_scheme, link_response_error
@@ -22,6 +25,7 @@ from metadata.prompts import (
     input_str,
     paint_blue,
     paint_yellow,
+    recap_entry_indent,
 )
 from metadata.schema import FieldSpec
 
@@ -37,18 +41,59 @@ CONTACT_INTRO = '  Add one link to a page where people can contact the company o
 _PAGE_RULE = '  Use an absolute https:// address to a web page.'
 
 
+# Names that resolve only on a local network. A public site is not one of these.
+_INTRANET_SUFFIXES = (
+    '.local',
+    '.localhost',
+    '.internal',
+    '.intranet',
+    '.lan',
+    '.home',
+    '.home.arpa',
+    '.corp',
+    '.localdomain',
+)
+_LOCAL_ADDRESS = (
+    'Local and intranet addresses are not accepted. Use a public https:// address.'
+)
+
+
 def link_url_error(value: str) -> str | None:
-    """Links must be absolute https URLs."""
+    """Links must be absolute https URLs on a public host.
+
+    A loopback, private, or link-local address is refused, as is a single-name
+    host such as ``intranet`` and a name that ends in ``.local`` or ``.lan``.
+    """
     url = value.strip()
     if not url.startswith('https://') or len(url) <= len('https://'):
         return f'{value!r} is not an absolute https:// URL.'
     if any(char.isspace() for char in url):
         return 'URL must not contain spaces.'
+    host = (urlparse(url).hostname or '').lower().rstrip('.')
+    if not host or _is_local_or_intranet(host):
+        return _LOCAL_ADDRESS
     return None
 
 
+def _is_local_or_intranet(host: str) -> bool:
+    if host == 'localhost' or host.endswith(_INTRANET_SUFFIXES):
+        return True
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        return '.' not in host
+    return (
+        address.is_private
+        or address.is_loopback
+        or address.is_link_local
+        or address.is_reserved
+        or address.is_multicast
+        or address.is_unspecified
+    )
+
+
 def _text_limits() -> tuple[int, int]:
-    """Heading uses the title limit. Sub-heading uses the description limit."""
+    """The title prompt uses the title limit. The description prompt uses the description limit."""
     from metadata.extra_content import DESCRIPTION_MAX_LENGTH, TITLE_MAX_LENGTH
 
     return TITLE_MAX_LENGTH, DESCRIPTION_MAX_LENGTH
@@ -91,6 +136,8 @@ def collect_links(
                 heading_default=heading_default, subheading_default=subheading_default,
                 url_label=url_label,
             )
+            if link is not None and _reject_duplicate(link, links, single=single):
+                continue
             if link is not None:
                 links = [link] if single else [*links, link]
             continue
@@ -104,6 +151,8 @@ def collect_links(
             heading_default=heading_default, subheading_default=subheading_default,
             url_label=url_label,
         )
+        if link is not None and _reject_duplicate(link, links, single=single, skip=index):
+            continue
         if link is not None:
             links[index] = link
 
@@ -178,6 +227,11 @@ def links_issue(
         error = link_url_error(url)
         if error:
             return ('other', f'{key}[{index}] url: {error}')
+        if any(
+            saved['url'].strip().casefold() == url.strip().casefold()
+            for saved in stored
+        ):
+            return ('other', f'{key}[{index}] repeats an earlier link')
         raw_label = link.get('label')
         is_contact = (
             contact_label is not None
@@ -240,12 +294,12 @@ def _collect_one_link(
 ) -> dict | None:
     """Collect one link. ``None`` returns to the link menu."""
     heading = format_custom_choice_value(input_str(
-        'Heading',
+        'Link title',
         heading_max,
         default=current['heading'] if current else heading_default,
     ))
     sub_heading = input_str(
-        'Sub-heading',
+        'Link description',
         subheading_max,
         default=current['sub-heading'] if current else subheading_default,
     )
@@ -260,6 +314,32 @@ def _collect_one_link(
         {'heading': heading, 'sub-heading': sub_heading, 'url': url},
         stored_label,
     )
+
+
+def _link_address(link: dict) -> str:
+    """The address that decides whether two links are the same."""
+    return link['url'].strip().casefold()
+
+
+def _reject_duplicate(
+    link: dict,
+    links: list[dict],
+    *,
+    single: bool,
+    skip: int | None = None,
+) -> bool:
+    """Warn and return True when *link* repeats an address already in *links*.
+
+    A one-link prompt has nothing to compare against. *skip* is the entry being
+    modified, so a link is not a duplicate of itself.
+    """
+    if single:
+        return False
+    address = _link_address(link)
+    if any(index != skip and _link_address(saved) == address for index, saved in enumerate(links)):
+        _link_warn('That link is already in the list. Use a different address.')
+        return True
+    return False
 
 
 def _link_warn(message: str) -> None:
@@ -422,11 +502,22 @@ def _choose_links(
 
 
 def _listed_links(links: list[dict]) -> list[str]:
+    """One block per link, numbered like a metric recap.
+
+    The title line starts at the left. The description and the address are
+    indented under that number. A grey rule separates links. The address stays
+    blue. The recap says title and description. The file stores those words as
+    heading and sub-heading.
+    """
     lines: list[str] = []
+    rule = _separator('-')
     for number, link in enumerate(links, start=1):
-        lines.append(f'  {number}. {link["heading"]}')
-        lines.append(f'     {link["sub-heading"]}')
-        lines.append(f'     {paint_blue(link["url"])}')
+        if number > 1:
+            lines.append(rule)
+        indent = recap_entry_indent(number)
+        lines.append(f'{number}. Title: {link["heading"]}')
+        lines.append(f'{indent}Description: {link["sub-heading"]}')
+        lines.append(f'{indent}Link: {paint_blue(link["url"])}')
     return lines
 
 
@@ -446,12 +537,12 @@ def _saved_links_are_too_long(
     for number, link in enumerate(links, start=1):
         if len(link['heading']) > heading_max:
             return (
-                f'Link {number} heading is more than {heading_max} characters. '
+                f'Link {number} title is more than {heading_max} characters. '
                 'Type 2 to modify it.'
             )
         if len(link['sub-heading']) > subheading_max:
             return (
-                f'Link {number} sub-heading is more than {subheading_max} characters. '
+                f'Link {number} description is more than {subheading_max} characters. '
                 'Type 2 to modify it.'
             )
     return None

@@ -82,13 +82,14 @@ def paint_magenta(text: str) -> str:
 
 
 def colour_key_line() -> str:
-    """One line under the metadata header explaining what each colour means."""
+    """The colour key under the metadata header, one colour on each line."""
     return (
-        f'  Color Code: {paint_green("green")} field names, '
-        f'{paint_cyan("cyan")} choices, options, and the field counter, '
-        f'{paint_blue("blue")} links in a video or link recap, '
-        f'{paint_yellow("yellow")} current values and warnings, '
-        f'{paint_magenta("magenta")} others.'
+        '  Color Code:\n'
+        f'    {paint_green("green")} field names\n'
+        f'    {paint_cyan("cyan")} choices, options, and the field counter\n'
+        f'    {paint_blue("blue")} links in a video or link recap\n'
+        f'    {paint_yellow("yellow")} current values and warnings\n'
+        f'    {paint_magenta("magenta")} others'
     )
 
 
@@ -193,6 +194,15 @@ def _field_separator() -> str:
     """The white ``====`` rule that starts each main field prompt, uncoloured."""
     width = shutil.get_terminal_size((80, 24)).columns
     return '=' * width
+
+
+def recap_entry_indent(number: int) -> str:
+    """Spaces that line up the lines under numbered entry *number*.
+
+    The lines under ``1. Title: Docs`` start at the same column as ``Title``,
+    so a two-digit number indents one more space than a one-digit number.
+    """
+    return ' ' * len(f'{number}. ')
 
 
 def _menu_choice(key: str, text: str) -> str:
@@ -366,15 +376,27 @@ def _numbers_for_saved(selected: list[str], choices: list[str]) -> str:
     return ', '.join(parts)
 
 
-def _value_after_saved_menu(raw: str, current: str) -> str | None:
+def _value_after_saved_menu(
+    raw: str,
+    current: str,
+    *,
+    remove_key: str = '',
+) -> str | None:
     """Read the replacement for a saved value. ``None`` means ask again.
 
     ``1`` places *current* on the input line. Any other answer is refused, so a
-    stray keystroke cannot replace the saved value.
+    stray keystroke cannot replace the saved value. *remove_key* is named in
+    that warning when the menu has a remove row.
     """
     if raw == MODIFY_KEY:
         return input_prefilled(': ', current).strip()
-    warn('Press Enter to keep it, or type 1 to modify it. Please try again.')
+    if remove_key:
+        warn(
+            'Press Enter to keep it, type 1 to modify it, '
+            f'or type {remove_key} to remove it. Please try again.'
+        )
+    else:
+        warn('Press Enter to keep it, or type 1 to modify it. Please try again.')
     return None
 
 
@@ -748,7 +770,7 @@ def input_choice(
     top_sep = _field_separator()
     saved_rows = _saved_text_rows()
     if allow_empty and default:
-        saved_rows = [*saved_rows, _menu_choice('-', 'Clear the value')]
+        saved_rows = [*saved_rows, _menu_choice('2', 'Remove the current value')]
     saved = (
         _saved_value_block(default, saved_rows)
         if default
@@ -770,14 +792,15 @@ def input_choice(
     )
     while True:
         raw = input(f'{saved}: ').strip()
-        if allow_empty and raw == '-':
-            return ''
         if default:
             if not raw:
                 return default
+            if allow_empty and raw == '2':
+                return ''
             raw = _value_after_saved_menu(
                 raw,
                 _numbers_for_saved([default], choices),
+                remove_key='2' if allow_empty else '',
             )
             if raw is None:
                 continue
@@ -850,25 +873,57 @@ def input_optional_str(
     *,
     default: str | None = None,
     hint: str = '',
+    aside: str | None = None,
     validator: Callable[[str], str | None] | None = None,
+    clear_label: str = '',
+    clear_key: str = '-',
+    nested: bool = False,
 ) -> str | None:
-    """Ask for optional text. Enter skips or keeps. ``-`` clears a saved value."""
-    top_sep = _field_separator()
-    note = f'\n  {hint}' if hint else ''
-    saved = _saved_value_block(default, _saved_text_rows()) if default else f'{_separator("-")}\n'
-    prompt = f'{top_sep}\n{field_name(name)}{note}\n{saved}: '
+    """Ask for optional text. Enter skips or keeps.
+
+    With *clear_label*, a saved value lists *clear_key* as a row that removes it.
+    That key removes only while the row is on screen, so a new value may use it.
+    *nested* keeps the question under the field just asked, without a new field
+    heading, so a follow-up such as a metric note does not look like the next figure.
+    """
+    if nested:
+        lines = [f'    {name}']
+        if aside:
+            lines.append(f'      {aside}')
+        if hint:
+            lines.append(f'      {hint}')
+        heading = '\n'.join(lines)
+        top = ''
+    else:
+        heading = _field_heading(name, None, hint or None, aside)
+        top = f'{_field_separator()}\n'
+    rows = _saved_text_rows()
+    if default and clear_label:
+        rows = [*rows, _menu_choice(clear_key, clear_label)]
+    if default:
+        saved = _saved_value_block(default, rows)
+    elif nested:
+        saved = ''
+    else:
+        saved = f'{_separator("-")}\n'
+    ask = '      : ' if nested and not default else ': '
+    prompt = f'{top}{heading}\n{saved}{ask}'
     while True:
         raw = input(prompt).strip()
         if default:
             if not raw:
                 return default
-            if raw == '-':
+            if clear_label and raw == clear_key:
                 return None
-            value = _value_after_saved_menu(raw, default)
+            value = _value_after_saved_menu(
+                raw,
+                default,
+                remove_key=clear_key if clear_label else '',
+            )
             if value is None:
                 continue
         else:
-            if not raw or raw == '-':
+            if not raw:
                 return None
             value = raw
         if validator is not None:
@@ -898,6 +953,8 @@ def input_choices(
     range_str = f'between 1 and {len(choices)}'
     top_sep = _field_separator()
     saved_rows = _saved_text_rows()
+    if allow_empty and default:
+        saved_rows = [*saved_rows, _menu_choice('2', 'Remove the current value')]
     saved = (
         _saved_value_block(', '.join(default), saved_rows)
         if default
@@ -927,9 +984,12 @@ def input_choices(
         if default:
             if not raw:
                 return list(default)
+            if allow_empty and raw == '2':
+                return []
             raw = _value_after_saved_menu(
                 raw,
                 _numbers_for_saved(default, choices),
+                remove_key='2' if allow_empty else '',
             )
             if raw is None:
                 continue
