@@ -53,6 +53,7 @@ from validation import (
     validate_loaded_metadata,
     validate_project_structure,
 )
+from metadata.link_live import custom_link_issues
 from metadata.schemas import validate_metadata_schemas
 
 
@@ -885,6 +886,7 @@ try:
             project_name,
             project_path,
             notices=notices,
+            check_links=custom_link_issues,
         )
 
     bundled_image = None

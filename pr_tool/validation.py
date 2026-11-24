@@ -17,6 +17,7 @@ from metadata.choices import (
     match_choice,
     normalize_project_types,
 )
+from metadata.link_prompt import www_missing_error
 from metadata.extra_content import (
     PARTNER_REPO_KEY,
     extra_field_issue,
@@ -36,6 +37,8 @@ from studio_templates import (
 from target_repo import TargetRepo
 
 CollectMissingFn = Callable[[dict, set[str]], dict]
+# (metadata, schema, addresses already asked) -> [(field key, message), ...]
+LiveLinkCheckFn = Callable[[dict, MetadataSchema, set[str]], list[tuple[str, str]]]
 
 
 @dataclass
@@ -149,18 +152,41 @@ def validate_loaded_metadata(
     project_name: str | None = None,
     project_path: Path | None = None,
     notices: list[str] | None = None,
+    check_links: LiveLinkCheckFn | None = None,
 ) -> dict:
     """Validate loaded metadata. Optional videos stay unset until metadata is modified.
 
     *notices* collects short messages about automatic fixes. Print them with
     ``print_metadata_notices`` after the metadata overview.
+
+    *check_links* asks the links a person entered whether they respond, once the
+    other checks pass. A link that does not respond is shown, and its field is
+    asked again until the link is changed or removed. Keeping it with Enter asks
+    the link again. An address that responded is not asked twice.
     """
     from metadata import confirm_metadata
 
     current = _repair_image_mirror(dict(metadata))
     _repair_metadata_title(current, schema, project_name, notices)
+    settled: set[str] = set()
     while True:
         result = validate_metadata(current, schema, project_name, project_path)
+        if check_links is not None and not (result.missing or result.other):
+            unreachable = check_links(current, schema, settled)
+            if unreachable:
+                print(
+                    f'\n{constants.ICON_WARNING} Some links in your project\'s '
+                    f'metadata.json did not respond:',
+                )
+                for _key, issue in unreachable:
+                    print(f'  - {issue}')
+                print(
+                    f'\n{constants.ICON_INFO} A link that does not respond cannot be '
+                    f'kept. Modify or remove it below.',
+                )
+                current = collect_missing(current, {key for key, _issue in unreachable})
+                current = _repair_image_mirror(current)
+                continue
         if result.missing or result.other:
             print(
                 f'\n{constants.ICON_WARNING} Your project\'s metadata.json is missing '
@@ -510,13 +536,8 @@ def _validate_brand(
         return
     if brand_image_id not in BRAND_IMAGE_ID:
         if brand_image_id.lower().endswith('.webp') and allow_new:
-            if brand_url_error(brand_url):
-                _mark_other(
-                    result,
-                    spec,
-                    f'brand_url: {brand_url!r} is not an absolute https:// URL, '
-                    f'for example https://acme.example',
-                )
+            if message := _brand_url_problem(brand_url):
+                _mark_other(result, spec, message)
             return
         if brand_image_id.lower().endswith('.webp'):
             message = (
@@ -529,13 +550,8 @@ def _validate_brand(
                 f'for example acme.webp'
             )
         _mark_choice(result, spec, message)
-        if brand_url_error(brand_url):
-            _mark_other(
-                result,
-                spec,
-                f'brand_url: {brand_url!r} is not an absolute https:// URL, '
-                f'for example https://acme.example',
-            )
+        if message := _brand_url_problem(brand_url):
+            _mark_other(result, spec, message)
         return
     expected_url = brand_for_image(brand_image_id).brand_url
     if brand_url != expected_url:
@@ -545,6 +561,18 @@ def _validate_brand(
             f'brand_url does not match brand_image_id '
             f'(expected {expected_url!r}, got {brand_url!r})',
         )
+
+
+def _brand_url_problem(brand_url: str) -> str | None:
+    """A saved brand address that is not https, or that still needs ``www.``."""
+    if brand_url_error(brand_url):
+        return (
+            f'brand_url: {brand_url!r} is not an absolute https:// URL, '
+            'for example https://www.acme.example'
+        )
+    if error := www_missing_error(brand_url):
+        return f'brand_url: {error}'
+    return None
 
 
 def _validate_links(
@@ -578,6 +606,12 @@ def _validate_links(
                 f'({STUDIO_TEMPLATE_LINK_MARKER}). Replace it with this project\'s link.',
             )
             return
+        if link.get('label') != 'GitHub' and '://github.com/' not in link['url']:
+            # Generated GitHub links use github.com, which is the real address.
+            # Every other saved link follows the same www. rule as a typed link.
+            if error := www_missing_error(link['url']):
+                _mark_other(result, spec, f'links[{index}] url: {error}')
+                return
         _repair_github_link_url(link, project_name)
 
 

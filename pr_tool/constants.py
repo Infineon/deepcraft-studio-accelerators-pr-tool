@@ -19,7 +19,7 @@ DEEPCRAFT = 'DEEPCRAFT\u2122'
 PSOC = 'PSOC\u2122'
 AURIX = 'AURIX\u2122'
 # Product words in a target label that the project summary shows in green.
-TARGET_HIGHLIGHT_WORDS = (PSOC, AURIX, 'Accelerators')
+TARGET_HIGHLIGHT_WORDS = (PSOC, AURIX, 'Accelerators', 'Extra Content')
 
 # ── Target Repositories ─────────────────────────────────────────
 from target_repo import ContentCategory, TargetRepo

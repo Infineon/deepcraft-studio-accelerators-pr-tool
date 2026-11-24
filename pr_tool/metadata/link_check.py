@@ -15,6 +15,7 @@ Used when a brand URL or a video link is entered.
 from __future__ import annotations
 
 import json
+import threading
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -34,6 +35,7 @@ def ensure_https_scheme(value: str) -> str:
 
 
 _TIMEOUT_SECONDS = 10
+_DEADLINE_SECONDS = 15
 _USER_AGENT = 'DEEPCRAFT-PR-Tool'
 _RETRY_GET = frozenset({400, 403, 405, 501})
 _UNREACHABLE = (
@@ -181,6 +183,30 @@ def _status(url: str, method: str) -> int:
 
 
 def _exchange(url: str, method: str, *, read_body: bool = False) -> tuple[int, bytes]:
+    """One request, given up after ``_DEADLINE_SECONDS`` in total.
+
+    The socket timeout applies to each address on its own. A name that resolves
+    to several unreachable addresses would otherwise wait for every one of them.
+    """
+    outcome: dict = {}
+
+    def run() -> None:
+        try:
+            outcome['reply'] = _exchange_once(url, method, read_body=read_body)
+        except BaseException as exc:  # handed back to the caller below
+            outcome['error'] = exc
+
+    worker = threading.Thread(target=run, daemon=True)
+    worker.start()
+    worker.join(_DEADLINE_SECONDS)
+    if worker.is_alive():
+        raise TimeoutError(f'No answer from {url} within {_DEADLINE_SECONDS} seconds.')
+    if 'error' in outcome:
+        raise outcome['error']
+    return outcome['reply']
+
+
+def _exchange_once(url: str, method: str, *, read_body: bool = False) -> tuple[int, bytes]:
     request = urllib.request.Request(
         url,
         method=method,

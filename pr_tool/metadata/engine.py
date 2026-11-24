@@ -63,7 +63,9 @@ from metadata.improj import (
 )
 from metadata.image_field import select_project_image
 from metadata.link_check import ensure_https_scheme, link_response_error
+from metadata.link_prompt import PAGE_ADDRESS_HINT, www_missing_error
 from metadata.long_description_prompt import input_html_text
+from metadata.metric_limits import device_names
 from metadata.metric_prompt import collect_metrics
 from metadata.prompts import (
     field_progress_prefix,
@@ -516,9 +518,13 @@ def _collect_custom_brand(previous: dict, *, keep_saved: bool = False, partner: 
             'Brand URL',
             None,
             default=url_default,
-            aside=BRAND_URL_HINT if partner else None,
+            details=(BRAND_URL_HINT, PAGE_ADDRESS_HINT),
         ))
-        error = brand_url_error(brand_url) or link_response_error(brand_url)
+        error = (
+            brand_url_error(brand_url)
+            or www_missing_error(brand_url)
+            or link_response_error(brand_url)
+        )
         if error is None:
             break
         warn(error)
@@ -530,16 +536,38 @@ def _collect_custom_brand(previous: dict, *, keep_saved: bool = False, partner: 
     )
 
 
+def _saved_new_brand(previous: dict) -> Brand | None:
+    """The new brand or partner saved earlier, when it can be kept as it is.
+
+    A known brand is not a new one. An address that no longer passes the link
+    checks is not kept, so the prompts ask for it again.
+    """
+    image = previous.get('brand_image_id')
+    url = previous.get('brand_url')
+    if not (isinstance(image, str) and image.strip() and isinstance(url, str) and url.strip()):
+        return None
+    if is_known_brand_image(image) or brand_url_error(url) or www_missing_error(url):
+        return None
+    return Brand(label=NEW_BRAND_PARTNER_LABEL, brand_image_id=image, brand_url=url)
+
+
 def _collect_brand(
     previous: dict,
     *,
     fallback: str | None = None,
     partner: bool = False,
 ) -> Brand:
-    """The brand step. A Partners card selects New Brand/Partner by default."""
+    """The brand step. A Partners card selects New Brand/Partner by default.
+
+    A new brand or partner saved earlier is the current value, and Enter keeps
+    it, with its image and address, without asking for them again.
+    """
     prev_image = previous.get('brand_image_id')
+    saved_new = _saved_new_brand(previous)
     default = None
-    if partner:
+    if saved_new is not None:
+        default = saved_new.brand_image_id
+    elif partner:
         default = NEW_BRAND_PARTNER_LABEL
     elif prev_image:
         if is_known_brand_image(prev_image):
@@ -555,8 +583,11 @@ def _collect_brand(
     ]
     while True:
         label = input_grouped_choice(
-            'Brand', groups, default=default, allow_custom=False, accept_default=partner,
+            'Brand', groups, default=default, allow_custom=False,
+            accept_default=partner and saved_new is None,
         )
+        if saved_new is not None and label == saved_new.brand_image_id:
+            return saved_new
         if label != NEW_BRAND_PARTNER_LABEL:
             break
         # Partners keeps this choice on purpose. Elsewhere, option 4 is easy to hit
@@ -849,6 +880,7 @@ def _collect_field(
             labels=field.choices or PERFORMANCE_METRIC_LABELS,
             with_note=True,
             title=field.label,
+            devices=device_names(result.get('device')),
         )
     raise ValueError(f'Unknown field kind: {field.kind!r}')
 

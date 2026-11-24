@@ -38,7 +38,9 @@ CONTACT_SUBHEADING = (
 _LINK_TRIES = 3
 _LINK_INTRO = '  Add links to webpages related to the content you want to submit.'
 CONTACT_INTRO = '  Add one link to a page where people can contact the company or brand.'
-_PAGE_RULE = '  Use an absolute https:// address to a web page.'
+# The address instruction shown under a link, and under the Brand URL prompt.
+PAGE_ADDRESS_HINT = 'Use an absolute https:// address to a web page.'
+_PAGE_RULE = f'  {PAGE_ADDRESS_HINT}'
 
 
 # Names that resolve only on a local network. A public site is not one of these.
@@ -73,6 +75,40 @@ def link_url_error(value: str) -> str | None:
     if not host or _is_local_or_intranet(host):
         return _LOCAL_ADDRESS
     return None
+
+
+# Two-part endings, so ``example.co.uk`` is seen as a bare domain too.
+_TWO_PART_SUFFIXES = frozenset({
+    'co.uk', 'org.uk', 'ac.uk', 'com.au', 'co.nz', 'co.jp', 'co.kr', 'co.in',
+    'co.za', 'com.cn', 'com.br', 'com.tw', 'com.hk', 'com.sg', 'com.mx',
+})
+
+
+def www_missing_error(value: str) -> str | None:
+    """Ask for ``www.`` in front of a bare domain such as ``infineon.com``.
+
+    A bare domain can resolve to addresses that only answer inside a company
+    network, so the check never finishes. A name that already has a prefix,
+    such as ``developer.infineon.com``, is left alone, because ``www.`` in front
+    of it would point somewhere else. An IP address is left to the other checks.
+    """
+    parsed = urlparse(value.strip())
+    host = (parsed.hostname or '').lower().rstrip('.')
+    if not host or host.startswith('www.'):
+        return None
+    try:
+        ipaddress.ip_address(host)
+        return None
+    except ValueError:
+        pass
+    labels = host.split('.')
+    bare = 3 if '.'.join(labels[-2:]) in _TWO_PART_SUFFIXES else 2
+    if len(labels) != bare:
+        return None
+    suggestion = ''
+    if '@' not in parsed.netloc:
+        suggestion = f' For example {parsed._replace(netloc="www." + parsed.netloc).geturl()}.'
+    return f'The address needs www. in front of {host}.{suggestion}'
 
 
 def _is_local_or_intranet(host: str) -> bool:
@@ -224,7 +260,7 @@ def links_issue(
                 f'{key}[{index}] sub-heading exceeds max length of {subheading_max} '
                 f'characters (got {len(sub_heading)})',
             )
-        error = link_url_error(url)
+        error = link_url_error(url) or www_missing_error(url)
         if error:
             return ('other', f'{key}[{index}] url: {error}')
         if any(
@@ -395,7 +431,11 @@ def _collect_link_url(
             error = 'Value cannot be empty, please try again.'
         else:
             link = ensure_https_scheme(link)
-            error = link_url_error(link) or link_response_error(link)
+            error = (
+                link_url_error(link)
+                or www_missing_error(link)
+                or link_response_error(link)
+            )
         if error is None:
             return link
         attempts += 1
@@ -484,6 +524,10 @@ def _choose_links(
             if links and (error := _saved_links_are_too_long(links, heading_max, subheading_max)):
                 _link_warn(error)
                 continue
+            modify_key = '1' if single else '2'
+            if links and (error := _saved_links_need_www(links, modify_key=modify_key)):
+                _link_warn(error)
+                continue
             return 'keep', 0
         if single and links:
             if raw in ('1', '2'):
@@ -526,6 +570,14 @@ def _link_index(count: int) -> int | None:
     if raw.isdigit() and 1 <= int(raw) <= count:
         return int(raw) - 1
     _link_warn(f'Type a number between 1 and {count}.')
+    return None
+
+
+def _saved_links_need_www(links: list[dict], *, modify_key: str) -> str | None:
+    """Refuse Enter on a saved address that still needs ``www.`` or another prefix."""
+    for number, link in enumerate(links, start=1):
+        if error := www_missing_error(link['url']):
+            return f'Link {number}: {error} Type {modify_key} to modify it.'
     return None
 
 

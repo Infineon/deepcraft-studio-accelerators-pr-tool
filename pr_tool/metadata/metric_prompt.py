@@ -10,16 +10,19 @@ how it was measured.
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 from typing import Any
 
 import constants
 from metadata.choices import PERFORMANCE_METRIC_LABELS
+from metadata.metric_limits import device_names, limit_error
 from metadata.prompts import (
     _field_separator,
     _menu_choice,
     _separator,
     field_name,
     input_optional_str,
+    paint_magenta,
     paint_yellow,
     recap_entry_indent,
 )
@@ -74,12 +77,14 @@ def collect_metrics(
     labels: tuple[str, ...] = PERFORMANCE_METRIC_LABELS,
     with_note: bool = True,
     title: str = 'Performance metrics',
+    devices: Sequence[str] = (),
 ) -> list[dict] | None:
     """Ask for performance metrics. Enter with none leaves the field out of the file.
 
     ``1`` asks for every label in order. Enter on a figure skips it. ``2``
     removes the set. A note follows each entered value except a shape. ``None``
-    means no metrics.
+    means no metrics. A number must be inside the range the listed *devices*
+    allow, and the least capable device sets the upper limit.
     """
     metrics = _saved_metrics(previous.get('metrics'))
     return _collect_fixed_metrics(
@@ -88,6 +93,7 @@ def collect_metrics(
         title=title,
         intro=_METRIC_INTRO,
         with_note=with_note,
+        devices=devices,
     )
 
 
@@ -95,6 +101,7 @@ def metrics_issue(metadata: dict, spec: FieldSpec) -> list[tuple[str, str]]:
     """Check saved metrics. A missing list is allowed when the field is optional."""
     key = spec.key
     metrics = metadata.get(key)
+    devices = device_names(metadata.get('device'))
     if metrics is None:
         if spec.required:
             return [('missing', f'Missing required field: {key}')]
@@ -128,7 +135,7 @@ def metrics_issue(metadata: dict, spec: FieldSpec) -> list[tuple[str, str]]:
         elif (
             isinstance(label, str)
             and label in allowed_set
-            and (error := metric_value_error(label, value.strip()))
+            and (error := metric_value_error(label, value.strip(), devices))
         ):
             issues.append(('other', f'{key}[{index}] value {value.strip()!r}: {error}'))
         note = entry.get('note')
@@ -185,6 +192,7 @@ def _collect_fixed_metrics(
     title: str,
     intro: str,
     with_note: bool,
+    devices: Sequence[str] = (),
 ) -> list[dict] | None:
     """Ask for every listed figure in order. Enter keeps or skips the set."""
     while True:
@@ -193,11 +201,26 @@ def _collect_fixed_metrics(
             metrics, title=title, intro=intro, with_note=with_note,
         )
         if action == 'keep':
+            if error := _saved_metrics_out_of_range(metrics, devices):
+                _metric_warn(f'{error} Type 1 to modify the metrics, or 2 to remove them.')
+                continue
             return metrics or None
         if action == 'clear':
             metrics = []
             continue
-        metrics = _ask_fixed_values(metrics, labels, with_note=with_note)
+        metrics = _ask_fixed_values(metrics, labels, with_note=with_note, devices=devices)
+
+
+def _saved_metrics_out_of_range(metrics: list[dict], devices: Sequence[str]) -> str | None:
+    """Refuse Enter on a saved value that the listed devices no longer allow.
+
+    This happens when the device was changed after the metrics were entered.
+    """
+    for number, item in enumerate(metrics, start=1):
+        if error := metric_value_error(item['label'], item['value'], devices):
+            text = error.removesuffix(' Please try again.')
+            return f'Metric {number}: {text}{"" if text.endswith(".") else "."}'
+    return None
 
 
 def _ask_fixed_values(
@@ -205,6 +228,7 @@ def _ask_fixed_values(
     labels: tuple[str, ...],
     *,
     with_note: bool,
+    devices: Sequence[str] = (),
 ) -> list[dict]:
     """Ask for each label's value, in list order, with no choice in between."""
     saved = {item['label']: item for item in metrics}
@@ -216,7 +240,9 @@ def _ask_fixed_values(
             default=current['value'] if current else None,
             hint='' if current else _SKIP_HINT,
             aside=METRIC_DESCRIPTIONS.get(label),
-            validator=lambda text, metric_label=label: metric_value_error(metric_label, text),
+            validator=lambda text, metric_label=label: metric_value_error(
+                metric_label, text, devices,
+            ),
             clear_label='Remove the metric',
             clear_key='2',
         )
@@ -278,16 +304,18 @@ def _choose_fixed_metrics(
         _metric_warn(f'{retry} Please try again.')
 
 
-def metric_value_error(label: str, value: str) -> str | None:
+def metric_value_error(label: str, value: str, devices: Sequence[str] = ()) -> str | None:
     """Return a warning when *value* is not allowed for *label*.
 
-    Input Layer and Output Layer take a shape. Every other metric takes a number.
+    Input Layer and Output Layer take a shape. Every other metric takes a number
+    inside the range its listed *devices* allow. The least capable device sets the
+    upper limit.
     """
     if label in _SHAPE_LABELS:
         if _METRIC_SHAPE.fullmatch(value):
             return None
         return _SHAPE_WARNING
-    return _reject_metric_number(value)
+    return _reject_metric_number(value) or limit_error(label, float(value), devices)
 
 
 def _reject_metric_number(value: str) -> str | None:
@@ -323,7 +351,7 @@ def _show_metric_menu(
         # The number starts the line. A note lines up under the figure's name.
         print(f'{index}. {metric["label"]}: {metric["value"]}')
         if with_note and metric.get('note'):
-            print(f'{recap_entry_indent(index)}Note: {metric["note"]}')
+            print(f'{recap_entry_indent(index)}{paint_magenta("Note:")} {metric["note"]}')
     print(rule)
     print('  Choose an option:')
     for option in options:

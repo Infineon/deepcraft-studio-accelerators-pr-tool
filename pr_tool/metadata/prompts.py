@@ -5,7 +5,7 @@ import re
 import shutil
 import sys
 from argparse import _ArgumentGroup
-from typing import Callable
+from typing import Callable, Sequence
 
 import constants
 from metadata.choices import canonical_choice, match_choice
@@ -449,7 +449,13 @@ def input_str(
     hint: str | None = None,
     aside: str | None = None,
     reject: Callable[[str], str | None] | None = None,
+    details: Sequence[str] | None = None,
 ) -> str:
+    """Ask for one line of text.
+
+    *details* are description lines framed by rules under the field name, the
+    way the Links prompt shows its instructions.
+    """
     top_sep = _field_separator()
     bottom_sep = _separator('-')
     saved = (
@@ -457,9 +463,15 @@ def input_str(
         if default
         else f'{bottom_sep}\n'
     )
+    described = (
+        f'{bottom_sep}\n' + ''.join(f'  {line}\n' for line in details)
+        if details
+        else ''
+    )
     prompt = (
         f'{top_sep}\n'
         f'{_field_heading(name, max_len, hint, aside)}\n'
+        f'{described}'
         f'{saved}'
         f': '
     )
@@ -887,11 +899,12 @@ def input_optional_str(
     heading, so a follow-up such as a metric note does not look like the next figure.
     """
     if nested:
-        lines = [f'    {name}']
+        # The title, description, hint, and input prompt all start in the same column.
+        lines = [f'  {paint_magenta(name)}']
         if aside:
-            lines.append(f'      {aside}')
+            lines.append(f'  {aside}')
         if hint:
-            lines.append(f'      {hint}')
+            lines.append(f'  {hint}')
         heading = '\n'.join(lines)
         top = ''
     else:
@@ -906,7 +919,7 @@ def input_optional_str(
         saved = ''
     else:
         saved = f'{_separator("-")}\n'
-    ask = '      : ' if nested and not default else ': '
+    ask = '  : ' if nested and not default else ': '
     prompt = f'{top}{heading}\n{saved}{ask}'
     while True:
         raw = input(prompt).strip()
