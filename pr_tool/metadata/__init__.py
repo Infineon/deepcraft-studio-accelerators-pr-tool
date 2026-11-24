@@ -2,7 +2,7 @@
 
 from metadata.engine import collect_metadata, finalize_metadata
 from metadata.format import format_metadata_json
-from metadata.prompts import confirm, confirm_metadata
+from metadata.prompts import confirm, confirm_metadata, confirm_new_entries
 from metadata.schemas import SCHEMAS
 
 __all__ = [
@@ -11,6 +11,7 @@ __all__ = [
     'finalize_metadata',
     'confirm',
     'confirm_metadata',
+    'confirm_new_entries',
     'format_metadata_json',
     'get_metadata_schema',
 ]

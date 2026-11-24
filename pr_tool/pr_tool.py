@@ -39,7 +39,7 @@ from metadata import confirm_metadata, finalize_metadata, format_metadata_json
 from metadata.card_image import card_image_spec, copy_card_image, place_card_image
 from target_prompts import confirm_restricted, saved_card_content, select_content_category_interactively
 from pr_comment import _post_review_comment
-from metadata.prompts import colour_key_line, confirm_menu, paint_magenta, paint_words
+from metadata.prompts import colour_key_line, confirm_menu, paint_words
 from submission_exclusions import (
     build_submission_exclude_pathspecs,
     filter_submission_paths,
@@ -48,8 +48,8 @@ from target_repo import validate_target_repos_registry
 from utils import group_files
 from project_layouts import card_directory_name_from_title, on_disk_names_matching
 from validation import (
-    print_between_separators,
     print_metadata_notices,
+    print_metadata_overview,
     validate_loaded_metadata,
     validate_project_structure,
 )
@@ -887,6 +887,11 @@ try:
             project_path,
             notices=notices,
             check_links=custom_link_issues,
+            collect_all=lambda current: args.collect_metadata(
+                use_cli_args=False,
+                previous=current,
+                review_pass=True,
+            ),
         )
 
     bundled_image = None
@@ -906,10 +911,7 @@ try:
                 continue
             if 'id' in metadata_schema.field_order:
                 metadata['id'] = card_slug
-        print_between_separators(
-            f'Project {paint_magenta("metadata.json")} overview:',
-            format_metadata_json(metadata, colour=True).rstrip('\n'),
-        )
+        print_metadata_overview(metadata)
         print_metadata_notices(notices)
         folder_note = (
             f'metadata.json will be saved in this folder: {project_path / card_slug}'

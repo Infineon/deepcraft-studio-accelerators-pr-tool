@@ -569,6 +569,37 @@ def confirm_metadata(*, save_on_yes: bool = False, note: str | None = None) -> s
         warn("Please answer 'y', 'n', or 'a'.")
 
 
+def confirm_new_entries(field_labels: Sequence[str]) -> str:
+    """Ask what to do with new entries found in a saved metadata file.
+
+    Returns ``'keep'``, ``'new'`` (modify only the fields with new entries),
+    ``'all'`` (modify the entire metadata), or ``'abort'``. *field_labels* names
+    the fields that hold the new entries, so the choice is clear.
+    """
+    names = ', '.join(field_labels)
+    prompt = _choice_menu(
+        'Proceed with this metadata?',
+        [
+            ('y', 'Yes, keep these values, the new entries are meant to be new'),
+            ('n', f'Modify only the fields with new entries ({names})'),
+            ('m', 'Modify the entire metadata, whether or not an entry is new'),
+            ('a', 'Abort without saving'),
+        ],
+        note=f'New entries were found in: {names}.',
+    )
+    while True:
+        answer = input(prompt).strip().lower()
+        if answer in ('y', 'yes'):
+            return 'keep'
+        if answer in ('n', 'no'):
+            return 'new'
+        if answer in ('m', 'modify'):
+            return 'all'
+        if answer in ('a', 'abort'):
+            return 'abort'
+        warn("Please answer 'y', 'n', 'm', or 'a'.")
+
+
 def confirm_new_value(value: str, kind: str, *, only_if_necessary: bool = False) -> bool:
     if only_if_necessary:
         return confirm(

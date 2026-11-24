@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import shutil
 import sys
 from collections.abc import Callable
@@ -9,7 +10,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import constants
-from metadata import finalize_metadata
+from metadata import finalize_metadata, format_metadata_json
 from metadata.choices import (
     BRAND_IMAGE_ID,
     brand_for_image,
@@ -25,7 +26,7 @@ from metadata.extra_content import (
     optional_workflow_issue,
 )
 from metadata.metric_prompt import metrics_issue
-from metadata.prompts import format_custom_choice_value
+from metadata.prompts import format_custom_choice_value, paint_magenta
 from metadata.rules import workflow_for_types
 from metadata.schema import FieldSpec, MetadataSchema
 from project_layouts import fixed_metadata_title, get_project_layout
@@ -37,6 +38,8 @@ from studio_templates import (
 from target_repo import TargetRepo
 
 CollectMissingFn = Callable[[dict, set[str]], dict]
+# Asks for the entire metadata again, with the saved values as defaults.
+CollectAllFn = Callable[[dict], dict]
 # (metadata, schema, addresses already asked) -> [(field key, message), ...]
 LiveLinkCheckFn = Callable[[dict, MetadataSchema, set[str]], list[tuple[str, str]]]
 
@@ -153,18 +156,24 @@ def validate_loaded_metadata(
     project_path: Path | None = None,
     notices: list[str] | None = None,
     check_links: LiveLinkCheckFn | None = None,
+    collect_all: CollectAllFn | None = None,
 ) -> dict:
     """Validate loaded metadata. Optional videos stay unset until metadata is modified.
 
     *notices* collects short messages about automatic fixes. Print them with
     ``print_metadata_notices`` after the metadata overview.
 
+    When a value is not in the suggested lists, the overview is shown with a
+    warning, and the person chooses: keep the new entries, modify only the fields
+    that hold them (*collect_missing*), or modify the entire metadata
+    (*collect_all*, which falls back to *collect_missing* with every field).
+
     *check_links* asks the links a person entered whether they respond, once the
     other checks pass. A link that does not respond is shown, and its field is
     asked again until the link is changed or removed. Keeping it with Enter asks
     the link again. An address that responded is not asked twice.
     """
-    from metadata import confirm_metadata
+    from metadata import confirm_new_entries
 
     current = _repair_image_mirror(dict(metadata))
     _repair_metadata_title(current, schema, project_name, notices)
@@ -201,6 +210,8 @@ def validate_loaded_metadata(
             current = _repair_image_mirror(current)
             continue
         if result.choice_violations:
+            # The recap comes first so the warning and the question sit right under it.
+            print_metadata_overview(finalize_metadata(copy.deepcopy(current), schema))
             print(
                 f'\n{constants.ICON_WARNING} Review needed: used value(s) are not in the '
                 f'suggested lists.',
@@ -216,11 +227,12 @@ def validate_loaded_metadata(
                 f'were updated.',
             )
             print(
-                f'\n{constants.ICON_INFO} Choose modify (n) to browse the lists and pick an '
-                f'existing value.',
+                f'\n{constants.ICON_INFO} Check the metadata above. Keep the new entries only '
+                f'if they are meant to be new.',
             )
             print(
-                f'  Choose yes (y) only if these values are meant to be new.',
+                f'  To pick a listed value instead, modify only the fields with new entries, '
+                f'or modify the entire metadata.',
             )
             if result.choice_fields & {'sensors', 'domain'}:
                 print(
@@ -228,12 +240,21 @@ def validate_loaded_metadata(
                     f'the lists. Keep a new value only if none of the listed options fits.',
                 )
             print()
-            answer = confirm_metadata()
+            answer = confirm_new_entries([
+                spec.label for spec in schema.fields if spec.key in result.choice_fields
+            ])
             if answer == 'abort':
                 print(f'{constants.ICON_ABORT} Aborted by user.')
                 sys.exit(0)
-            if answer == 'no':
+            if answer == 'new':
                 current = collect_missing(current, result.choice_fields)
+                current = _repair_image_mirror(current)
+                continue
+            if answer == 'all':
+                if collect_all is not None:
+                    current = collect_all(current)
+                else:
+                    current = collect_missing(current, {spec.key for spec in schema.fields})
                 current = _repair_image_mirror(current)
                 continue
         return finalize_metadata(current, schema)
@@ -298,6 +319,14 @@ def print_between_separators(*lines: str) -> None:
     for line in lines:
         print(line)
     print(rule)
+
+
+def print_metadata_overview(metadata: dict) -> None:
+    """Print the metadata as it would be saved, under the ``metadata.json`` heading."""
+    print_between_separators(
+        f'Project {paint_magenta("metadata.json")} overview:',
+        format_metadata_json(metadata, colour=True).rstrip('\n'),
+    )
 
 
 def print_metadata_notices(notices: list[str]) -> None:
