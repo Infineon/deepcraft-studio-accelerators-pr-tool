@@ -8,7 +8,7 @@ contributors open pull requests against Infineon DEEPCRAFT&trade; GitHub repos:
 | `accelerators` | [deepcraft-studio-accelerators](https://github.com/Infineon/deepcraft-studio-accelerators) |
 | `model-zoo-psoc` | [deepcraft-model-zoo-for-psoc](https://github.com/Infineon/deepcraft-model-zoo-for-psoc) |
 | `model-zoo-aurix` | [deepcraft-model-zoo-for-aurix](https://github.com/Infineon/deepcraft-model-zoo-for-aurix) — writes `metadata.json` only; does not open a pull request |
-| `extra-content` | [deepcraft-ai-hub](https://github.com/Reyev123/deepcraft-ai-hub) — pushes one `metadata.json` per card, plus a Partners brand image when you give a local file, and opens a pull request. Restricted to authorized users. |
+| `extra-content` | [deepcraft-ai-hub](https://github.com/Infineon/deepcraft-ai-hub) — pushes one `metadata.json` per card, plus a Partners brand image when you give a local file, and opens a pull request. |
 
 **End users:** see [`pr_tool/README.md`](pr_tool/README.md) for full usage,
 options, project layouts, and troubleshooting.
@@ -171,7 +171,7 @@ Edit `EXCLUDED_NAMES` and `EXCLUDED_FILE_GLOBS` in `submission_exclusions.py`.
    * **accelerators** — `README.md`, `metadata.json`, `<Name>.improj`, `Data/`; CamelCase name.
    * **model-zoo-psoc** — `README.md`, `metadata.json`; branch-safe folder name.
    * **metadata-only targets** (currently `model-zoo-aurix`) — any folder; the tool writes `metadata.json` and stops. No git push or pull request. A new metadata-only repo uses the same flag; only its schema is new.
-   * **extra-content** — a local card folder. The card name is a lowercase URL-safe identifier. The tool writes `metadata.json`, pushes that file to `Reyev123/deepcraft-ai-hub`, and opens a pull request. A Partners card can also give a local `.webp` file in 16:9; that file is committed next to `metadata.json` and listed in the pull request. Choosing New Brand/Partner on another target does not do this.
+   * **extra-content** — a local card folder. The card name is a lowercase URL-safe identifier. The tool writes `metadata.json`, pushes that file to `Infineon/deepcraft-ai-hub`, and opens a pull request. A Partners card can also give a local `.webp` file in 16:9; that file is committed next to `metadata.json` and listed in the pull request. Choosing New Brand/Partner on another target does not do this.
 
    A test folder may also be a local git repo or contain a venv; those paths are
    excluded from push and (for accelerators) from root layout validation.

@@ -6,7 +6,7 @@ DEEPCRAFT&trade; GitHub repositories:
 * [Infineon/deepcraft-studio-accelerators](https://github.com/Infineon/deepcraft-studio-accelerators) (`--repo accelerators`)
 * [Infineon/deepcraft-model-zoo-for-psoc](https://github.com/Infineon/deepcraft-model-zoo-for-psoc) (`--repo model-zoo-psoc`)
 * [Infineon/deepcraft-model-zoo-for-aurix](https://github.com/Infineon/deepcraft-model-zoo-for-aurix) (`--repo model-zoo-aurix`) — **metadata file only**; the tool does not fork, push, or open a pull request
-* [Reyev123/deepcraft-ai-hub](https://github.com/Reyev123/deepcraft-ai-hub) (`--repo extra-content`) — **one `metadata.json` per card**, pushed under a content folder, with a pull request. Restricted to authorized users.
+* [Infineon/deepcraft-ai-hub](https://github.com/Infineon/deepcraft-ai-hub) (`--repo extra-content`) — **one `metadata.json` per card**, pushed under a content folder, with a pull request.
 
 The tool wraps `git` and the bundled GitHub CLI (`pr_tool/gh.exe`) to automate the whole workflow
 for you:
@@ -50,7 +50,7 @@ Project image names and tags are read from **`pr_tool/images.json` only**
 | `accelerators` | `Infineon/deepcraft-studio-accelerators` | `accelerator_layout` (DEEPCRAFT&trade; Studio, below) |
 | `model-zoo-psoc` | `Infineon/deepcraft-model-zoo-for-psoc` | `model_zoo_psoc_layout` (README + metadata only) |
 | `model-zoo-aurix` | `Infineon/deepcraft-model-zoo-for-aurix` | `metadata_only_layout` (metadata-only target: writes `metadata.json`; no publish) |
-| `extra-content` | `Reyev123/deepcraft-ai-hub` | `ai_hub_card_layout` (pushes `<folder>/<name>/metadata.json` and opens a pull request) |
+| `extra-content` | `Infineon/deepcraft-ai-hub` | `ai_hub_card_layout` (pushes `<folder>/<name>/metadata.json` and opens a pull request) |
 
 Every publishing layout requires **`README.md`** and **`metadata.json`** at the project root.
 A metadata-only target (currently `model-zoo-aurix`) only writes `metadata.json` and does not publish.
@@ -116,9 +116,7 @@ This behavior comes from the target setting, not from a particular repository. `
 
 ## Extra content (`--repo extra-content`)
 
-This target publishes one card to [Reyev123/deepcraft-ai-hub](https://github.com/Reyev123/deepcraft-ai-hub). `--path` is the local folder where `metadata.json` is saved. If that folder does not exist yet, the tool asks before creating it. The tool pushes only that file to `<folder>/<card name>/metadata.json` and opens a pull request. When the card folder is built from the title, the confirmation question `Proceed with this metadata?` is followed by a line such as `metadata.json will be saved in this folder: <folder>\<card folder>`, so you can check the location before you confirm. A local `README.md` is optional and is not pushed.
-
-The repository is restricted. The tool warns before you start and again before the push. It cannot check whether you are authorized. An unauthorized pull request is closed without review.
+This target publishes one card to [Infineon/deepcraft-ai-hub](https://github.com/Infineon/deepcraft-ai-hub), a public repository. `--path` is the local folder where `metadata.json` is saved. If that folder does not exist yet, the tool asks before creating it. The tool pushes only that file to `<folder>/<card name>/metadata.json` and opens a pull request. When the card folder is built from the title, the confirmation question `Proceed with this metadata?` is followed by a line such as `metadata.json will be saved in this folder: <folder>\<card folder>`, so you can check the location before you confirm. A local `README.md` is optional and is not pushed.
 
 The tool asks for the content folder in a menu before anything else when the path has no `metadata.json`, and when you pass `--override-metadata`. When the path already contains `metadata.json`, the tool loads that file and takes the content type from its `type`. The menu is skipped, and the saved `type` stays as it is. Choosing to modify the metadata then asks the fields for that content type.
 
