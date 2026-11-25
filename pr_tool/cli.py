@@ -284,6 +284,14 @@ class Cli:
             kwargs['stdout'] = PIPE
         return self.run([self.gh_executable] + args, *popenargs, **kwargs)
 
+    def gh_interactive(self, args: list) -> CliResult:
+        """Run a ``gh`` command that talks to the user (login, scope refresh).
+
+        ``gh auth`` prints its one-time code and "Press Enter" prompt on stderr.
+        Capturing stderr would hide them and look like a hang, so pass it through.
+        """
+        return self.run([self.gh_executable] + args, stderr=sys.stderr)
+
     def _parse_github_scopes(self, scopes: object) -> set[str]:
         if isinstance(scopes, str):
             return {part.strip() for part in scopes.split(',') if part.strip()}
@@ -333,8 +341,8 @@ class Cli:
                 f'  {ICON_INFO} Opening browser login '
                 f'(this tool uses: {self.gh_executable})...',
             )
-            self.gh(['auth', 'login', '--hostname', 'github.com', '--web',
-                     '--git-protocol', 'https', '--scopes', ','.join(required_scopes)])
+            self.gh_interactive(['auth', 'login', '--hostname', 'github.com', '--web',
+                                 '--git-protocol', 'https', '--scopes', ','.join(required_scopes)])
             host = self._active_github_host()
             if host is None or host.get('state') != 'success':
                 raise Exception(
@@ -349,8 +357,12 @@ class Cli:
             self.progress(
                 f'Adding missing GitHub token scope(s): {", ".join(missing)}',
             )
-            self.gh(['auth', 'refresh', '--hostname', 'github.com',
-                     '-s', ','.join(missing)])
+            print(
+                f'  {ICON_INFO} Follow the instructions below; a browser window '
+                'may open to authorize the new permission.',
+            )
+            self.gh_interactive(['auth', 'refresh', '--hostname', 'github.com',
+                                 '-s', ','.join(missing)])
             host = self._active_github_host()
             granted = self._parse_github_scopes(host.get('scopes') if host else None)
             still_missing = [scope for scope in required_scopes if scope not in granted]

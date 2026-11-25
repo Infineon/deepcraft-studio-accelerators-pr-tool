@@ -390,17 +390,45 @@ def wait_for_pull_request_url(
         time.sleep(wait_for)
 
 
-def recreate_fork_with_confirmation(user: str, target_repo) -> None:
+def fork_parent(user: str, target_repo) -> str | None:
+    """``owner/name`` of the repository the user's fork was created from, if known."""
+    return _usable_gh_string(
+        gh(['api', f'repos/{user}/{target_repo.repo_name}', '--jq', '.parent.full_name'],
+           check=False),
+    )
+
+
+def fork_has_wrong_parent(parent: str | None, target_repo) -> bool:
+    """True when the fork exists but was created from another repository.
+
+    ``gh repo sync`` and pull requests follow the fork's parent, so a fork made
+    from an old source (such as a previous private repository) must be replaced.
+    An unknown parent is not treated as a mismatch.
+    """
+    return bool(parent) and parent.lower() != target_repo.base_repo.lower()
+
+
+def recreate_fork_with_confirmation(
+    user: str, target_repo, *, wrong_parent: str | None = None,
+) -> None:
     """Delete and re-fork only after an explicit yes — this wipes all fork branches."""
     print()
     print('=' * 60)
-    print(f'  {ICON_WARNING} Could not sync your fork\'s main branch with Infineon.')
+    if wrong_parent:
+        print(f'  {ICON_WARNING} Your fork {user}/{target_repo.repo_name} was created from')
+        print(f'  {wrong_parent}, not from {target_repo.base_repo}.')
+    else:
+        print(f'  {ICON_WARNING} Could not sync your fork\'s main branch with {target_repo.repo_owner}.')
     print('=' * 60)
     print(f'  {ICON_WARNING} Recreating the fork DELETES the entire repository')
     print(f'  {user}/{target_repo.repo_name} on your account, including every')
     print('  other project branch and unmerged work on that fork.')
-    print(f'  {ICON_INFO} Prefer fixing network/permissions and re-running if you')
-    print('  have other work on this fork.')
+    if wrong_parent:
+        print(f'  {ICON_INFO} Pull requests from this fork would go to {wrong_parent}.')
+        print('  Copy any work you want to keep from this fork before continuing.')
+    else:
+        print(f'  {ICON_INFO} Prefer fixing network/permissions and re-running if you')
+        print('  have other work on this fork.')
     print('=' * 60)
     print()
     if not confirm('Delete and recreate your entire fork?'):
@@ -408,7 +436,9 @@ def recreate_fork_with_confirmation(user: str, target_repo) -> None:
         print(f'  {ICON_INFO} Re-run the tool later, or sync the fork manually on GitHub.')
         sys.exit(0)
     cli.progress('Recreating fork...')
-    gh(['auth', 'refresh', '--hostname', 'github.com', '-s', 'workflow,delete_repo'])
+    # Deleting a repository needs the delete_repo scope; this only asks GitHub
+    # for it when the token does not have it yet.
+    cli.ensure_github_auth(required_scopes=('workflow', 'delete_repo'))
     gh(['repo', 'delete', f'{user}/{target_repo.repo_name}', '--yes'])
     fork(target_repo.base_repo)
 
@@ -1037,15 +1067,20 @@ if not fork_exists:
     with cli.busy('Creating fork on GitHub'):
         fork(target_repo.base_repo)
 else:
-    with cli.busy(f'Syncing your fork main branch with {target_repo.repo_owner}'):
-        sync_ok = gh(
-            ['repo', 'sync', f'{user}/{target_repo.repo_name}', '--force', '--branch', MAIN_BRANCH],
-            check=False,
-        ) == 0
-    if not sync_ok:
-        recreate_fork_with_confirmation(user, target_repo)
+    with cli.busy('Checking which repository your fork was created from'):
+        existing_parent = fork_parent(user, target_repo)
+    if fork_has_wrong_parent(existing_parent, target_repo):
+        recreate_fork_with_confirmation(user, target_repo, wrong_parent=existing_parent)
     else:
-        ensure_fork_matches_upstream(user, target_repo)
+        with cli.busy(f'Syncing your fork main branch with {target_repo.repo_owner}'):
+            sync_ok = gh(
+                ['repo', 'sync', f'{user}/{target_repo.repo_name}', '--force', '--branch', MAIN_BRANCH],
+                check=False,
+            ) == 0
+        if not sync_ok:
+            recreate_fork_with_confirmation(user, target_repo)
+        else:
+            ensure_fork_matches_upstream(user, target_repo)
 
 cli.git_dir = git_dir = project_path.parent / GIT_DIR / target_repo.key / project_name
 tool_exit_code = 0
