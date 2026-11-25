@@ -1,7 +1,7 @@
 [
   {
     "name": "animal_monitoring.webp",
-    "tags": ["animal", "monitoring", "wildlife", "nature"]
+    "tags": ["animal", "monitoring", "wildlife", "nature", "agriculture and farming", "environmental protection", "vision", "camera", "audio", "microphone"]
   },
   {
     "name": "audio.webp",
@@ -9,71 +9,75 @@
   },
   {
     "name": "automotive_environment.webp",
-    "tags": ["automotive", "environment", "weather", "traffic", "city", "street"]
+    "tags": ["automotive", "weather", "traffic", "city", "street", "adas", "vision", "camera", "radar", "audio", "microphone", "temperature", "humidity"]
   },
   {
     "name": "automotive_in_cabin.webp",
-    "tags": ["automotive", "vehicle", "in-cabin"]
+    "tags": ["automotive", "vehicle", "in-cabin", "adas", "audio", "microphone", "voice", "vision", "camera", "radar", "touch"]
   },
   {
     "name": "automotive_machine_maintenance.webp",
-    "tags": ["vehicle", "automotive", "machinery", "predictive maintenance"]
+    "tags": ["vehicle", "automotive", "machinery", "predictive maintenance", "battery management system (bms)", "motion", "vibration", "audio", "microphone", "vision", "camera", "electronics", "power", "voltage", "current"]
   },
   {
     "name": "bathroom.webp",
-    "tags": ["bathroom", "smart home", "shower", "toilet", "sink", "bath", "appliances"]
+    "tags": ["bathroom", "smart home", "shower", "toilet", "sink", "bath", "appliances", "temperature", "humidity", "audio", "microphone", "vision", "camera", "radar"]
   },
   {
     "name": "bedroom.webp",
-    "tags": ["bedroom", "smart home", "sleep"]
+    "tags": ["bedroom", "smart home", "sleep", "audio", "microphone", "motion", "radar", "vision", "camera"]
   },
   {
     "name": "city.webp",
-    "tags": ["city", "traffic", "parking", "building", "street"]
+    "tags": ["city", "traffic", "parking", "street", "adas", "commercial building automation", "vision", "camera", "radar", "audio", "microphone"]
+  },
+  {
+    "name": "deepcraft_ai_suite.webp",
+    "tags": ["deepcraft_ai_suite", "edge_ai"]
   },
   {
     "name": "electrical.webp",
-    "tags": ["electronics", "power", "voltage", "current"]
+    "tags": ["electronics", "power", "voltage", "current", "battery management system (bms)"]
   },
   {
     "name": "environment_nature_monitoring.webp",
-    "tags": ["environment", "nature", "monitoring", "wildlife", "weather", "forest"]
+    "tags": ["nature", "monitoring", "wildlife", "weather", "forest", "agriculture and farming", "environmental protection", "temperature", "humidity", "pressure", "gas", "vision", "camera", "audio", "microphone"]
   },
   {
     "name": "health.webp",
-    "tags": ["health", "monitoring"]
+    "tags": ["healthcare", "monitoring", "audio", "microphone", "vision", "camera", "motion", "radar"]
   },
   {
     "name": "hmi.webp",
-    "tags": ["human machine interface", "camera", "radar", "touch", "microphone"]
+    "tags": ["human machine interface", "games", "humanoid robot", "camera", "radar", "touch", "microphone", "audio", "vision"]
   },
   {
     "name": "industrial_assembly_line_hmi.webp",
-    "tags": [ "industrial", "machinery", "assembly line", "human machine interface"]
+    "tags": ["industrial iot", "smart manufacturing", "machinery", "assembly line", "human machine interface", "vision", "camera", "touch", "audio", "microphone", "motion", "vibration", "radar"]
   },
   {
     "name": "industrial_big_machinery.webp",
-    "tags": [ "industrial", "machinery", "assembly line"]
+    "tags": ["industrial iot", "smart manufacturing", "machinery", "assembly line", "motion", "vibration", "audio", "microphone", "vision", "camera", "electronics", "power", "voltage", "current"]
   },
   {
     "name": "industrial_maintenance.webp",
-    "tags": ["industrial", "safety", "predictive maintenance", "machinery", "equipment"]
+    "tags": ["industrial iot", "smart manufacturing", "safety monitoring", "predictive maintenance", "machinery", "equipment", "motion", "vibration", "audio", "microphone", "vision", "camera", "electronics", "power", "voltage", "current"]
   },
   {
     "name": "industrial_setting_safety.webp",
-    "tags": ["industrial", "manufacturing", "safety", "quality", "human machine interface"]
+    "tags": ["smart manufacturing", "safety monitoring", "quality", "human machine interface", "vision", "camera", "radar", "audio", "microphone", "motion"]
   },
   {
     "name": "iot_smart_home.webp",
-    "tags": ["smart home", "appliances", "security"]
+    "tags": ["smart home", "appliances", "security", "commercial building automation", "audio", "microphone", "vision", "camera", "motion", "radar", "temperature", "humidity", "touch"]
   },
   {
     "name": "kitchen.webp",
-    "tags": ["kitchen", "smart home", "appliances"]
+    "tags": ["kitchen", "smart home", "appliances", "audio", "microphone", "vision", "camera", "gas", "temperature", "humidity"]
   },
   {
     "name": "living_room.webp",
-    "tags": ["living room","smart home", "pets", "appliances"]
+    "tags": ["living room", "smart home", "pets", "appliances", "audio", "microphone", "vision", "camera", "motion", "radar"]
   },
   {
     "name": "motion.webp",
@@ -81,7 +85,7 @@
   },
   {
     "name": "office.webp",
-    "tags": ["office", "workplace", "computer", "appliances"]
+    "tags": ["office", "workplace", "computer", "appliances", "commercial building automation", "audio", "microphone", "vision", "camera", "motion"]
   },
   {
     "name": "radar.webp",
@@ -89,15 +93,15 @@
   },
   {
     "name": "security_monitoring.webp",
-    "tags": ["security", "monitoring", "smart home", "parking", "door", "window", "alarm"]
+    "tags": ["security", "monitoring", "safety monitoring", "smart home", "commercial building automation", "parking", "door", "window", "alarm", "vision", "camera", "radar", "audio", "microphone", "motion"]
   },
   {
     "name": "shop_store.webp",
-    "tags": ["shop", "commercial", "food", "clothing", "appliances", "grocery", "pharmacy"]
+    "tags": ["shop", "commercial building automation", "food", "clothing", "appliances", "grocery", "pharmacy", "vision", "camera", "radar", "audio", "microphone"]
   },
   {
     "name": "sport.webp",
-    "tags": ["sport"]
+    "tags": ["sport", "games", "motion", "vision", "camera", "audio", "microphone"]
   },
   {
     "name": "vision.webp",
@@ -105,14 +109,14 @@
   },
   {
     "name": "wearables.webp",
-    "tags": ["wearable", "device", "health", "sport"]
+    "tags": ["wearables", "device", "healthcare", "sport", "motion", "audio", "microphone", "temperature"]
   },
   {
     "name": "work_site_setting.webp",
-    "tags": ["industrial", "construction", "logistics", "work site"]
+    "tags": ["construction", "logistics", "work site", "safety monitoring", "smart manufacturing", "vision", "camera", "audio", "microphone", "motion", "vibration", "radar"]
   },
   {
     "name": "workshop.webp",
-    "tags": ["workshop", "workplace", "tools", "appliances", "equipment"]
+    "tags": ["workshop", "workplace", "tools", "appliances", "equipment", "industrial iot", "smart manufacturing", "audio", "microphone", "motion", "vibration", "vision", "camera", "electronics", "power", "voltage", "current"]
   }
 ]

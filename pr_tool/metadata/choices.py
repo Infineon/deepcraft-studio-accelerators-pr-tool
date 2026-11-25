@@ -12,7 +12,6 @@ Autoselection (kit to device, type to workflow, sensor to domain) lives in
 import re
 from collections.abc import Iterable
 from dataclasses import dataclass
-from urllib.parse import urlparse
 
 from metadata.rules import (
     KIT_TO_DEVICE,
@@ -271,6 +270,13 @@ def normalize_project_types(value: str | list[str] | None) -> list[str]:
     return expanded
 
 
+# Solutions figures. They come first when the two lists are joined.
+SOLUTION_METRIC_LABELS = (
+    'RW Memory Usage (KiB)',
+    'RO Memory Usage (KiB)',
+    'Inference Time (ms)',
+)
+
 # Predefined metric labels for model-zoo-psoc metadata.json (values are prompted).
 METRIC_LABELS = (
     'Inference Time (ms)',
@@ -280,6 +286,21 @@ METRIC_LABELS = (
     'Compute (MC)',
     'Energy (mJ)',
     'Scratch Pad Size (MB)',
+)
+
+# One list for every content type that asks for metrics, in prompt order.
+# Solutions figures come first, then the Model Zoo PSOC figures. Inference Time
+# is shared and is asked once, in the Solutions place.
+PERFORMANCE_METRIC_LABELS = (
+    'RW Memory Usage (KiB)',
+    'RO Memory Usage (KiB)',
+    'Inference Time (ms)',
+    'Model Weight (MB)',
+    'Scratch Pad Size (MB)',
+    'Compute (MC)',
+    'Energy (mJ)',
+    'Input Layer',
+    'Output Layer',
 )
 
 @dataclass(frozen=True)
@@ -340,16 +361,14 @@ def brand_for_image(brand_image_id: str) -> Brand:
 
 
 def brand_url_error(value: str) -> str | None:
-    """Return a message when *value* is not an http(s) address with a domain.
+    """Return a message when *value* is not an absolute https address.
 
-    ``None`` means the address can be stored as ``brand_url``.
+    The same rule as a webpage link. The prompt adds ``https://`` when the
+    address has no scheme. ``None`` means it can be stored as ``brand_url``.
     """
-    text = (value or '').strip()
-    parsed = urlparse(text)
-    host = parsed.hostname or ''
-    if parsed.scheme.lower() in ('http', 'https') and '.' in host and ' ' not in text:
-        return None
-    return 'Enter an http(s) URL, for example https://acme.example.'
+    from metadata.link_prompt import link_url_error
+
+    return link_url_error(value or '')
 
 
 def is_known_brand_image(brand_image_id: str) -> bool:

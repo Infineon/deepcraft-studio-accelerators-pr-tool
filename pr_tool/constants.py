@@ -19,10 +19,39 @@ DEEPCRAFT = 'DEEPCRAFT\u2122'
 PSOC = 'PSOC\u2122'
 AURIX = 'AURIX\u2122'
 # Product words in a target label that the project summary shows in green.
-TARGET_HIGHLIGHT_WORDS = (PSOC, AURIX, 'Accelerators')
+TARGET_HIGHLIGHT_WORDS = (PSOC, AURIX, 'Accelerators', 'Extra Content')
 
 # ── Target Repositories ─────────────────────────────────────────
-from target_repo import TargetRepo
+from target_repo import ContentCategory, TargetRepo
+
+# DEEPCRAFT AI Hub cards live at <category>/<card>/metadata.json.
+AI_HUB_CONTENT_CATEGORIES: tuple[ContentCategory, ...] = (
+    ContentCategory(
+        'getting-started', 'getting_started', 'Getting Started',
+        'extra-content-getting-started',
+        'Guides, tutorials, and introductory material on Edge AI',
+    ),
+    ContentCategory(
+        'resources', 'resources', 'Resources',
+        'extra-content-resources',
+        'Blog posts, articles, white papers, and other reading on Edge AI',
+    ),
+    ContentCategory(
+        'partners', 'partners', 'Partners',
+        'extra-content-partners',
+        'Partner profiles that highlight partners and their Edge AI offerings',
+    ),
+    ContentCategory(
+        'solutions', 'solutions', 'Solutions',
+        'extra-content-solutions',
+        'Production-ready Edge AI solutions with performance metrics',
+    ),
+    ContentCategory(
+        'tools', 'tools', 'Tools',
+        'extra-content-tools',
+        'DEEPCRAFT\u2122 tools for developing and deploying Edge AI models',
+    ),
+)
 
 TARGET_REPOS: dict[str, TargetRepo] = {
     'accelerators': TargetRepo(
@@ -49,6 +78,16 @@ TARGET_REPOS: dict[str, TargetRepo] = {
         project_layout='metadata_only_layout',
         git_ignored_dirs=(),
         metadata_only=True,
+    ),
+    'extra-content': TargetRepo(
+        key='extra-content',
+        repo_name='deepcraft-ai-hub',
+        label=f'{DEEPCRAFT} AI Hub — Extra Content',
+        pr_title_template='AI Hub {category}: {project_name}',
+        project_layout='ai_hub_card_layout',
+        git_ignored_dirs=(),
+        push_metadata_only=True,
+        content_categories=AI_HUB_CONTENT_CATEGORIES,
     ),
 }
 

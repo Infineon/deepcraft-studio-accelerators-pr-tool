@@ -12,15 +12,21 @@ these functions while prompting, and again when metadata is finalized.
   the project-image list (names, and the tags on those images) are limited to
   the selected application. ``Other``, or an unknown application, keeps the
   full lists.
-- ``DOMAIN_USE_CASES`` and ``DOMAIN_IMAGES``: the use-case list, and the
-  project-image list with its tags, are limited again to the selected domains,
-  which follow the sensors. A value is offered when it fits at least one
-  selected domain. ``Other``, or an unknown domain, skips this filter. When
-  nothing fits both the application and the domain, the domain list is shown.
-  An Object Detection project always keeps the Object Detection use case, and
-  an Image Classification project always keeps Image Classification.
-  Room and setting images are not tied to a sensor, so they drop out once a
-  domain is selected.
+- ``DOMAIN_USE_CASES``: the use-case list is limited again to the selected
+  domains, which follow the sensors. A use case is offered when it fits at
+  least one selected domain. ``Other``, or an unknown domain, skips this
+  filter. When nothing fits both the application and the domain, the domain
+  list is shown. An Object Detection project always keeps the Object Detection
+  use case, and an Image Classification project always keeps Image Classification.
+- ``DOMAIN_IMAGES`` and ``DOMAIN_TAGS``: with no application selected, the
+  project-image list is the domain's images. With an application selected, the
+  list starts from that application's images and keeps the ones whose tags
+  include the domain, and adds the domain's own image (``CANONICAL_DOMAIN_IMAGE``).
+  When no application image carries the domain's tags, the application's images
+  are kept and the domain's image is added.
+  The tags in the prompt are the tags on those images, except tags that belong
+  to another domain. The suite image has no domain tag, so a selected domain
+  leaves it out.
 
 Vision Studio projects still fill sensors and kits from the ``.improj``
 algorithm in ``metadata.improj``. Domain then follows the sensor rule.
@@ -107,6 +113,41 @@ def workflow_for_types(types: list[str]) -> list[str]:
         if workflow and workflow not in workflows:
             workflows.append(workflow)
     return workflows
+
+
+# Kit families shown in the kit prompt, in this order. A kit whose name does
+# not start with one of these is listed under ``Other``.
+KIT_GROUP_ORDER = ('PSOC', 'AURIX', 'TRAVEO', 'XENSIV', 'AIROC')
+
+
+def _kit_family(kit: str) -> str | None:
+    text = kit.strip().casefold() if isinstance(kit, str) else ''
+    if not text:
+        return None
+    for family in KIT_GROUP_ORDER:
+        if text.startswith(family.casefold()):
+            return family
+    return None
+
+
+def kit_groups(kits: list[str]) -> list[tuple[str, list[str]]]:
+    """Group *kits* under PSOC, AURIX, TRAVEO, XENSIV, and AIROC.
+
+    The prompt uses the same columns as the sensor list. A kit that does not
+    belong to one of those families is listed under ``Other``.
+    """
+    buckets: dict[str, list[str]] = {}
+    other: list[str] = []
+    for kit in kits:
+        family = _kit_family(kit)
+        if family is None:
+            other.append(kit)
+            continue
+        buckets.setdefault(family, []).append(kit)
+    groups = [(family, buckets[family]) for family in KIT_GROUP_ORDER if family in buckets]
+    if other:
+        groups.append(('Other', other))
+    return groups
 
 
 def devices_for_kits(kits: list[str]) -> list[str] | None:
@@ -344,58 +385,72 @@ DOMAIN_USE_CASES: dict[str, tuple[str, ...]] = {
     ),
 }
 
+# deepcraft_ai_suite.webp is listed on every application. It is not in
+# DOMAIN_IMAGES, so choosing a domain still leaves it out of a Studio prompt.
+SUITE_IMAGE_NAME = 'deepcraft_ai_suite.webp'
 APPLICATION_IMAGES: dict[str, tuple[str, ...]] = {
     'ADAS': (
         'automotive_environment.webp', 'automotive_in_cabin.webp', 'city.webp',
-        'radar.webp', 'vision.webp',
+        'radar.webp', 'vision.webp', 'deepcraft_ai_suite.webp',
     ),
     'Agriculture and Farming': (
         'animal_monitoring.webp', 'environment_nature_monitoring.webp',
+        'deepcraft_ai_suite.webp',
     ),
     'Appliances': (
         'bathroom.webp', 'electrical.webp', 'iot_smart_home.webp',
-        'kitchen.webp', 'living_room.webp',
+        'kitchen.webp', 'living_room.webp', 'deepcraft_ai_suite.webp',
     ),
     'Automotive': (
         'audio.webp', 'automotive_environment.webp', 'automotive_in_cabin.webp',
         'automotive_machine_maintenance.webp', 'city.webp', 'radar.webp', 'vision.webp',
+        'deepcraft_ai_suite.webp',
     ),
-    'Battery Management System (BMS)': ('electrical.webp',),
+    'Battery Management System (BMS)': (
+        'automotive_machine_maintenance.webp', 'electrical.webp', 'deepcraft_ai_suite.webp',
+    ),
     'Commercial Building Automation': (
         'city.webp', 'iot_smart_home.webp', 'office.webp',
-        'security_monitoring.webp', 'shop_store.webp',
+        'security_monitoring.webp', 'shop_store.webp', 'deepcraft_ai_suite.webp',
     ),
     'Environmental Protection': (
         'animal_monitoring.webp', 'environment_nature_monitoring.webp',
+        'deepcraft_ai_suite.webp',
     ),
-    'Games': ('hmi.webp', 'motion.webp', 'sport.webp', 'vision.webp'),
-    'Healthcare': ('audio.webp', 'health.webp', 'wearables.webp'),
-    'Humanoid Robot': ('hmi.webp', 'motion.webp', 'vision.webp'),
+    'Games': ('hmi.webp', 'motion.webp', 'sport.webp', 'vision.webp', 'deepcraft_ai_suite.webp'),
+    'Healthcare': ('audio.webp', 'health.webp', 'wearables.webp', 'deepcraft_ai_suite.webp'),
+    'Humanoid Robot': ('hmi.webp', 'motion.webp', 'vision.webp', 'deepcraft_ai_suite.webp'),
     'Industrial IoT': (
         'electrical.webp', 'industrial_assembly_line_hmi.webp',
         'industrial_big_machinery.webp', 'industrial_maintenance.webp',
-        'motion.webp', 'workshop.webp',
+        'motion.webp', 'workshop.webp', 'deepcraft_ai_suite.webp',
     ),
     'Safety Monitoring': (
         'industrial_maintenance.webp', 'industrial_setting_safety.webp',
         'radar.webp', 'security_monitoring.webp', 'vision.webp', 'work_site_setting.webp',
+        'deepcraft_ai_suite.webp',
     ),
     'Smart Home': (
         'audio.webp', 'bathroom.webp', 'bedroom.webp', 'iot_smart_home.webp',
         'kitchen.webp', 'living_room.webp', 'security_monitoring.webp',
+        'deepcraft_ai_suite.webp',
     ),
     'Smart Manufacturing': (
         'industrial_assembly_line_hmi.webp', 'industrial_big_machinery.webp',
         'industrial_maintenance.webp', 'industrial_setting_safety.webp',
-        'work_site_setting.webp', 'workshop.webp',
+        'work_site_setting.webp', 'workshop.webp', 'deepcraft_ai_suite.webp',
     ),
-    'Wearables': ('health.webp', 'motion.webp', 'sport.webp', 'wearables.webp'),
+    'Wearables': (
+        'health.webp', 'motion.webp', 'sport.webp', 'wearables.webp',
+        'deepcraft_ai_suite.webp',
+    ),
 }
 
-# Images whose subject is a sensing domain. The tag list is the tags on these
-# images, so a microphone is not offered radar or camera tags. An image may fit
-# more than one domain. Room and setting images are omitted on purpose.
-# ``Other`` is omitted so it skips this filter.
+# Images whose subject is a sensing domain. With no application selected, these
+# are the images offered. The application-then-domain filter lives in
+# image_names_for_context and uses DOMAIN_TAGS, not this table, so an
+# application image can stay when it carries the domain's tag. An image may
+# fit more than one domain. ``Other`` is omitted so it skips this filter.
 DOMAIN_IMAGES: dict[str, tuple[str, ...]] = {
     'Audio': ('audio.webp',),
     'Vision': (
@@ -414,6 +469,37 @@ DOMAIN_IMAGES: dict[str, tuple[str, ...]] = {
     'Temperature and Humidity': ('environment_nature_monitoring.webp',),
     'Pressure': ('environment_nature_monitoring.webp',),
     'Gas': ('environment_nature_monitoring.webp',),
+}
+
+# Sensing tags that say an image fits a domain. An application image such as
+# automotive_in_cabin.webp stays for Vision because it carries "vision" and
+# "camera". Other words on a domain image, such as "monitoring" on vision.webp,
+# do not define the domain.
+DOMAIN_TAGS: dict[str, tuple[str, ...]] = {
+    'Audio': ('audio', 'microphone', 'voice', 'music', 'noise'),
+    'Vision': ('vision', 'camera'),
+    'Motion and Vibration': (
+        'motion', 'vibration', 'accelerometer', 'gyroscope', 'magnetometer',
+    ),
+    'Radar': ('radar',),
+    'Touch': ('touch',),
+    'Electrical Signals': ('electronics', 'power', 'voltage', 'current'),
+    'Temperature and Humidity': ('temperature', 'humidity'),
+    'Pressure': ('pressure',),
+    'Gas': ('gas',),
+}
+
+# The image offered for a domain alongside the application's own images.
+CANONICAL_DOMAIN_IMAGE: dict[str, str] = {
+    'Audio': 'audio.webp',
+    'Vision': 'vision.webp',
+    'Motion and Vibration': 'motion.webp',
+    'Radar': 'radar.webp',
+    'Touch': 'hmi.webp',
+    'Electrical Signals': 'electrical.webp',
+    'Temperature and Humidity': 'environment_nature_monitoring.webp',
+    'Pressure': 'environment_nature_monitoring.webp',
+    'Gas': 'environment_nature_monitoring.webp',
 }
 
 
@@ -481,6 +567,37 @@ def use_cases_for_domains(domains: list[str]) -> list[str] | None:
     return [use_case for use_case in USE_CASE if use_case in found]
 
 
+def use_case_groups(use_cases: list[str], domains: list[str]) -> list[tuple[str, list[str]]]:
+    """Group *use_cases* under the selected domains, in the sensor-column style.
+
+    Each use case is listed once, under the first selected domain that contains
+    it. A use case that fits no selected domain is listed under ``Other``.
+    When no domain is selected, every catalog domain that contains one of the
+    use cases is a heading.
+    """
+    from metadata.choices import DOMAIN
+
+    offered = set(use_cases)
+    if domains:
+        headings = [domain for domain in domains if domain in DOMAIN_USE_CASES]
+    else:
+        headings = [domain for domain in DOMAIN if domain in DOMAIN_USE_CASES]
+    placed: set[str] = set()
+    groups: list[tuple[str, list[str]]] = []
+    for domain in headings:
+        items = [
+            name for name in DOMAIN_USE_CASES[domain]
+            if name in offered and name not in placed
+        ]
+        if items:
+            groups.append((domain, items))
+            placed.update(items)
+    other = [name for name in use_cases if name not in placed]
+    if other:
+        groups.append(('Other', other))
+    return groups
+
+
 # The use case that names the vision project. Shown even when the application
 # and domain filters would leave it out.
 PROJECT_USE_CASE = {
@@ -491,6 +608,12 @@ PROJECT_USE_CASE = {
 
 def project_use_case(algorithm: object) -> str | None:
     """The use case an Object Detection or Image Classification project always offers."""
+    if isinstance(algorithm, list):
+        for item in algorithm:
+            found = project_use_case(item)
+            if found:
+                return found
+        return None
     if not isinstance(algorithm, str) or not algorithm.strip():
         return None
     text = algorithm.strip()
@@ -556,13 +679,108 @@ def image_names_for_domains(domains: list[str]) -> list[str] | None:
     return sorted(found)
 
 
-def image_names_for_context(applications: list[str], domains: list[str]) -> list[str] | None:
-    """Images that fit the selected applications and the selected domains.
+def _domain_tag_set(domains: list[str]) -> set[str]:
+    """Lower-cased sensing tags for *domains*, or an empty set when the filter is open."""
+    keys = _mapped_keys(domains, DOMAIN_TAGS)
+    if keys is None:
+        return set()
+    return {tag.casefold() for key in keys for tag in DOMAIN_TAGS[key]}
 
-    The tag list is the tags on the images returned here. The fallback is the
-    same as :func:`use_cases_for_context`.
+
+def _images_with_domain_tags(names: list[str], domains: list[str]) -> list[str]:
+    """Names in *names* that carry a tag of one of *domains*.
+
+    The suite image is left out: its tags name the product, so a selected
+    domain removes it from a Studio prompt.
     """
-    return _limited_to_both(
-        image_names_for_applications(applications),
-        image_names_for_domains(domains),
-    )
+    wanted = _domain_tag_set(domains)
+    if not wanted:
+        return []
+    from image_selector import get_tags_for_images
+
+    kept: list[str] = []
+    for name in names:
+        if name == SUITE_IMAGE_NAME:
+            continue
+        tags = {tag.casefold() for tag in get_tags_for_images([name])}
+        if tags & wanted:
+            kept.append(name)
+    return sorted(kept)
+
+
+def image_list_follows_the_domain(applications: list[str], domains: list[str]) -> bool:
+    """True when no application image carries a tag of the selected domains.
+
+    The prompt then adds the domain's own image to the application's images.
+    """
+    by_application = image_names_for_applications(applications)
+    if by_application is None or image_names_for_domains(domains) is None:
+        return False
+    return not _images_with_domain_tags(by_application, domains)
+
+
+def _canonical_domain_images(domains: list[str]) -> list[str]:
+    """The domain image to suggest for each selected domain."""
+    keys = _mapped_keys(domains, CANONICAL_DOMAIN_IMAGE)
+    if keys is None:
+        return []
+    found: list[str] = []
+    for key in keys:
+        name = CANONICAL_DOMAIN_IMAGE[key]
+        if name not in found:
+            found.append(name)
+    return found
+
+
+def _other_domain_tags(domains: list[str]) -> set[str]:
+    """Sensing tags of every domain except the selected ones."""
+    selected = _domain_tag_set(domains)
+    if not selected:
+        return set()
+    every = {tag.casefold() for tags in DOMAIN_TAGS.values() for tag in tags}
+    return every - selected
+
+
+def image_names_for_context(applications: list[str], domains: list[str]) -> list[str] | None:
+    """Images for the selected applications, then limited to the selected domains.
+
+    The application list comes first. A selected domain keeps the images in
+    that list whose tags include the domain, and adds that domain's own image.
+    Automotive with Vision therefore offers ``vision.webp`` and the automotive
+    images that carry a vision tag. When no application image carries the
+    domain's tags, the application's images are kept and the domain's own image
+    is added, so Automotive with Gas offers the automotive images and
+    ``environment_nature_monitoring.webp``. A side that leaves the list open
+    (see :func:`image_names_for_domains`) is ignored, and the other side is
+    returned alone.
+    """
+    by_application = image_names_for_applications(applications)
+    by_domain = image_names_for_domains(domains)
+    if by_application is None:
+        return by_domain
+    if by_domain is None:
+        return by_application
+    matched = _images_with_domain_tags(by_application, domains)
+    if not matched:
+        # No application image has the domain's tags: keep the application's
+        # images and add the domain's own image.
+        matched = [name for name in by_application if name != SUITE_IMAGE_NAME]
+    return sorted(set(matched) | set(_canonical_domain_images(domains)))
+
+
+def tags_for_image_context(names: list[str] | None, domains: list[str]) -> list[str] | None:
+    """Tags to offer for *names* once a domain is selected.
+
+    ``None`` keeps every tag on the images. A selected domain keeps the tags
+    on the offered images and drops tags that belong to the other domains, so
+    Vision keeps ``vision`` and ``camera`` and leaves out ``audio`` and ``radar``.
+    """
+    if names is None or image_names_for_domains(domains) is None:
+        return None
+    from image_selector import get_tags_for_images
+
+    blocked = _other_domain_tags(domains)
+    return [
+        tag for tag in get_tags_for_images(names)
+        if tag.casefold() not in blocked
+    ]

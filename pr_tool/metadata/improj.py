@@ -90,13 +90,20 @@ def is_vision_algorithm(algorithm: object) -> bool:
     return isinstance(algorithm, str) and algorithm in VISION_ALGORITHMS
 
 
+def _vision_algorithm(value: object) -> str | None:
+    """A vision algorithm from a single value or from a list of algorithms."""
+    if isinstance(value, list):
+        return next((item for item in value if is_vision_algorithm(item)), None)
+    return value if is_vision_algorithm(value) else None
+
+
 def apply_vision_metadata_defaults(metadata: dict, *, only_missing_kit: bool = False) -> bool:
     """Apply Camera / Vision / Edge kit defaults for vision algorithms.
 
     When *only_missing_kit* is True, existing kit/device values are left unchanged
     (used when reloading metadata the user may have customized).
     """
-    if not is_vision_algorithm(metadata.get('algorithm')):
+    if not is_vision_algorithm(_vision_algorithm(metadata.get('algorithm'))):
         return False
     metadata['sensors'] = list(VISION_SENSORS)
     metadata['domain'] = list(VISION_DOMAIN)
