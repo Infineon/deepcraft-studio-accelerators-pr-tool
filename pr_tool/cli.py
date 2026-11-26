@@ -109,6 +109,23 @@ def _resolve_gh_executable() -> tuple[str, str]:
     sys.exit(1)
 
 
+def _line_limit() -> int:
+    """Widest in-place line that is safe to redraw with ``\\r``.
+
+    A line wider than the terminal wraps, and ``\\r`` then returns to the start of
+    the wrapped row instead of the first one, so every redraw adds a new line.
+    The margin also covers emoji, which many terminals draw two cells wide.
+    """
+    return max(shutil.get_terminal_size((80, 24)).columns - 4, 20)
+
+
+def _shorten(text: str, room: int) -> str:
+    """Cut *text* to *room* characters, ending with an ellipsis when it is cut."""
+    if len(text) <= room:
+        return text
+    return text[:max(room - 1, 0)] + '…'
+
+
 class Cli:
     def __init__(self, *, verbose: bool = False, base_repo: str):
         self.cwd = None
@@ -156,7 +173,8 @@ class Cli:
         line = f'  {ICON_PROGRESS} [{bar}] {done}/{total} ({pct}%)  {message}'
         use_cr = sys.stdout.isatty() and not final and done < total
         if use_cr:
-            width = max(getattr(self, '_progress_width', 0), len(line))
+            line = _shorten(line, _line_limit())
+            width = min(max(getattr(self, '_progress_width', 0), len(line)), _line_limit())
             self._progress_width = width
             print('\r' + line.ljust(width), end='', flush=True)
             return
@@ -178,19 +196,20 @@ class Cli:
         stop = threading.Event()
         frames = itertools.cycle('|/-\\')
 
-        def _spin() -> None:
-            # First paint immediately so the user sees activity before the wait.
-            frame = next(frames)
-            line = f'  {ICON_PROGRESS} {message}...  {frame}'
-            width = max(getattr(self, '_progress_width', 0), len(line))
+        def _paint(frame: str) -> None:
+            prefix = f'  {ICON_PROGRESS} '
+            suffix = f'...  {frame}'
+            text = _shorten(message, _line_limit() - len(prefix) - len(suffix))
+            line = f'{prefix}{text}{suffix}'
+            width = min(max(getattr(self, '_progress_width', 0), len(line)), _line_limit())
             self._progress_width = width
             print('\r' + line.ljust(width), end='', flush=True)
+
+        def _spin() -> None:
+            # First paint immediately so the user sees activity before the wait.
+            _paint(next(frames))
             while not stop.wait(0.4):
-                frame = next(frames)
-                line = f'  {ICON_PROGRESS} {message}...  {frame}'
-                width = max(getattr(self, '_progress_width', 0), len(line))
-                self._progress_width = width
-                print('\r' + line.ljust(width), end='', flush=True)
+                _paint(next(frames))
 
         thread = threading.Thread(target=_spin, daemon=True)
         thread.start()
