@@ -9,6 +9,7 @@ from subprocess import PIPE, CalledProcessError, DEVNULL
 from tempfile import NamedTemporaryFile, TemporaryDirectory
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+from chunk_push import ChunkPushPlan, direct_push_args
 from cli import (
     Cli,
     called_process_error_text,
@@ -514,6 +515,16 @@ def _fork_url(user: str, target_repo) -> str:
 
 def _upstream_url(target_repo) -> str:
     return f'{HOST}/{target_repo.base_repo}'
+
+
+def _fork_git_url(user: str, target_repo) -> str:
+    """HTTPS clone URL of the fork, with the account name included.
+
+    Naming the account in the URL lets Git Credential Manager use that account's
+    stored sign-in. Without it, each push may prompt for an account choice when
+    several GitHub accounts are signed in. The URL carries no password or token.
+    """
+    return HOST.replace('://', f'://{user}@', 1) + f'/{user}/{target_repo.repo_name}.git'
 
 
 def open_url_in_browser(url: str) -> bool:
@@ -1099,7 +1110,7 @@ try:  # Always remove git_dir after this block
                 with cli.busy('Cloning your fork (partial clone; large forks take a while)'):
                     git(['clone', '--no-checkout', '--depth', '1', '--no-single-branch', '--filter=blob:none',
                          f'--separate-git-dir={git_dir}',
-                         f'{HOST}/{user}/{target_repo.repo_name}.git', tmpdir])
+                         _fork_git_url(user, target_repo), tmpdir])
                 cli.progress('Configuring local git and sparse checkout...')
                 git(['remote', 'add', '-t', MAIN_BRANCH, 'upstream', target_repo.base_repo_url])
                 git(['config', 'advice.updateSparsePath', 'false'])
@@ -1123,6 +1134,7 @@ try:  # Always remove git_dir after this block
                         check=False,
                         stdout=DEVNULL,
                     ) == 2
+                pr_state = None
                 if not branch_is_new:
                     cli.progress('Checking pull-request state for this branch...')
                     pr_state = _usable_gh_string(
@@ -1163,11 +1175,8 @@ try:  # Always remove git_dir after this block
                         published = ' and '.join(staged.splitlines())
                         cli.progress(f'Committing {published}...')
                         git(['commit', '--quiet', '--no-verify', '-m', f'{commit_verb} {published}'])
-                        push_args = ['push', '-u', 'origin', 'HEAD']
-                        if branch_was_reset:
-                            push_args.insert(1, '--force-with-lease')
                         cli.progress(f'Pushing {published} to GitHub...')
-                        git(push_args)
+                        git(direct_push_args(force_with_lease=branch_was_reset))
                         metadata_pushed = True
 
             # The scratch clone above was deleted with its TemporaryDirectory. Later gh
@@ -1281,6 +1290,15 @@ try:  # Always remove git_dir after this block
                         f'Pushing {file_total} file(s) in {count} commit'
                         f'{"s" if count != 1 else ""}...',
                     )
+                    push_plan = ChunkPushPlan.create(
+                        branch_name, pr_state, count, branch_was_reset=branch_was_reset,
+                    )
+                    if push_plan.staged:
+                        cli.progress(
+                            'An open pull request is updated once, after every chunk is on your fork.',
+                        )
+                        # A side branch left by an interrupted run starts from scratch.
+                        git(push_plan.delete_staging_args, check=False, quiet_stderr=True)
                     for index, (label, group) in enumerate(commit_batches, start=1):
                         cli.progress_bar(
                             index - 1,
@@ -1293,25 +1311,24 @@ try:  # Always remove git_dir after this block
                             f'{"s" if len(group) != 1 else ""})...',
                         )
                         git(['commit', '--quiet', '--no-verify', '-m', f'{commit_verb} {label}'])
-                        cli.progress(f'Pushing {label} to GitHub (please wait)...')
-                        push_args = ['push', '-u', 'origin', 'HEAD']
-                        if branch_was_reset:
-                            push_args.insert(1, '--force-with-lease')
-                        git(push_args)
+                        where = 'a side branch' if push_plan.staged else 'GitHub'
+                        cli.progress(f'Pushing {label} to {where} (please wait)...')
+                        git(push_plan.chunk_push_args)
                         cli.progress_bar(
                             index,
                             count,
                             f'Finished {label}',
                             final=True,
                         )
+                    if push_plan.staged:
+                        cli.progress('Updating the open pull request...')
+                        git(push_plan.final_push_args)
+                        git(push_plan.delete_staging_args, check=False, quiet_stderr=True)
                     pushed_changes = True
                 elif diff_names_deleted:
                     cli.progress('Pushing deletions...')
                     git(['commit', '--quiet', '-m', 'Delete files'])
-                    push_args = ['push', '-u', 'origin', 'HEAD']
-                    if branch_was_reset:
-                        push_args.insert(1, '--force-with-lease')
-                    git(push_args)
+                    git(direct_push_args(force_with_lease=branch_was_reset))
                     pushed_changes = True
                 else:
                     pushed_changes = False
