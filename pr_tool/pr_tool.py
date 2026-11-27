@@ -9,6 +9,7 @@ from subprocess import PIPE, CalledProcessError, DEVNULL
 from tempfile import NamedTemporaryFile, TemporaryDirectory
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+from chunk_push import ChunkPushPlan, direct_push_args
 from cli import (
     Cli,
     called_process_error_text,
@@ -1123,6 +1124,7 @@ try:  # Always remove git_dir after this block
                         check=False,
                         stdout=DEVNULL,
                     ) == 2
+                pr_state = None
                 if not branch_is_new:
                     cli.progress('Checking pull-request state for this branch...')
                     pr_state = _usable_gh_string(
@@ -1163,11 +1165,8 @@ try:  # Always remove git_dir after this block
                         published = ' and '.join(staged.splitlines())
                         cli.progress(f'Committing {published}...')
                         git(['commit', '--quiet', '--no-verify', '-m', f'{commit_verb} {published}'])
-                        push_args = ['push', '-u', 'origin', 'HEAD']
-                        if branch_was_reset:
-                            push_args.insert(1, '--force-with-lease')
                         cli.progress(f'Pushing {published} to GitHub...')
-                        git(push_args)
+                        git(direct_push_args(force_with_lease=branch_was_reset))
                         metadata_pushed = True
 
             # The scratch clone above was deleted with its TemporaryDirectory. Later gh
@@ -1281,6 +1280,15 @@ try:  # Always remove git_dir after this block
                         f'Pushing {file_total} file(s) in {count} commit'
                         f'{"s" if count != 1 else ""}...',
                     )
+                    push_plan = ChunkPushPlan.create(
+                        branch_name, pr_state, count, branch_was_reset=branch_was_reset,
+                    )
+                    if push_plan.staged:
+                        cli.progress(
+                            'An open pull request is updated once, after every chunk is on your fork.',
+                        )
+                        # A side branch left by an interrupted run starts from scratch.
+                        git(push_plan.delete_staging_args, check=False, quiet_stderr=True)
                     for index, (label, group) in enumerate(commit_batches, start=1):
                         cli.progress_bar(
                             index - 1,
@@ -1293,25 +1301,24 @@ try:  # Always remove git_dir after this block
                             f'{"s" if len(group) != 1 else ""})...',
                         )
                         git(['commit', '--quiet', '--no-verify', '-m', f'{commit_verb} {label}'])
-                        cli.progress(f'Pushing {label} to GitHub (please wait)...')
-                        push_args = ['push', '-u', 'origin', 'HEAD']
-                        if branch_was_reset:
-                            push_args.insert(1, '--force-with-lease')
-                        git(push_args)
+                        where = 'a side branch' if push_plan.staged else 'GitHub'
+                        cli.progress(f'Pushing {label} to {where} (please wait)...')
+                        git(push_plan.chunk_push_args)
                         cli.progress_bar(
                             index,
                             count,
                             f'Finished {label}',
                             final=True,
                         )
+                    if push_plan.staged:
+                        cli.progress('Updating the open pull request...')
+                        git(push_plan.final_push_args)
+                        git(push_plan.delete_staging_args, check=False, quiet_stderr=True)
                     pushed_changes = True
                 elif diff_names_deleted:
                     cli.progress('Pushing deletions...')
                     git(['commit', '--quiet', '-m', 'Delete files'])
-                    push_args = ['push', '-u', 'origin', 'HEAD']
-                    if branch_was_reset:
-                        push_args.insert(1, '--force-with-lease')
-                    git(push_args)
+                    git(direct_push_args(force_with_lease=branch_was_reset))
                     pushed_changes = True
                 else:
                     pushed_changes = False

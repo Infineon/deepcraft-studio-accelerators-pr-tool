@@ -16,7 +16,10 @@ for you:
 3. Creates / switches to a branch named after your project.
 4. Commits and pushes your project's files (splitting large change sets into
    chunks under GitHub's ~2 GB per-push limit and about 2,500 files per
-   commit, so large Data folders stay reliable).
+   commit, so large Data folders stay reliable). When a pull request is
+   already open and the update takes more than one chunk, the chunks go to a
+   side branch and the pull request branch is updated once, after the last
+   chunk, so the pull request build runs on the finished submission.
 5. Opens the resulting pull request in your browser.
 
 The same command can also be used to **update** an existing pull request &ndash;
@@ -298,7 +301,11 @@ What happens under the hood:
    `Add chunk N of M` to `Modify files` / `Modify chunk N of M` on subsequent
    runs.
 3. Only the diff against your previous push is committed and pushed (file
-   additions, modifications, and deletions are all handled).
+   additions, modifications, and deletions are all handled). When that diff
+   is split into several chunks, each chunk is pushed to a `pr-tool-chunks/<branch>`
+   side branch. The pull request branch is updated once, after the last
+   chunk, and the side branch is then deleted. A single chunk goes straight
+   to the branch, and so does a branch with no open pull request.
 4. If a pull request is already **open** for that branch, the tool simply
    **opens it in your browser** &ndash; no new PR is created.
 
