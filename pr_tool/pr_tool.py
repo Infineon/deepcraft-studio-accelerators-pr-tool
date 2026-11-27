@@ -517,6 +517,16 @@ def _upstream_url(target_repo) -> str:
     return f'{HOST}/{target_repo.base_repo}'
 
 
+def _fork_git_url(user: str, target_repo) -> str:
+    """HTTPS clone URL of the fork, with the account name included.
+
+    Naming the account in the URL lets Git Credential Manager use that account's
+    stored sign-in. Without it, each push may prompt for an account choice when
+    several GitHub accounts are signed in. The URL carries no password or token.
+    """
+    return HOST.replace('://', f'://{user}@', 1) + f'/{user}/{target_repo.repo_name}.git'
+
+
 def open_url_in_browser(url: str) -> bool:
     """Open *url* in the default browser. Return True if the call appeared to succeed."""
     if not looks_like_url(url):
@@ -1100,7 +1110,7 @@ try:  # Always remove git_dir after this block
                 with cli.busy('Cloning your fork (partial clone; large forks take a while)'):
                     git(['clone', '--no-checkout', '--depth', '1', '--no-single-branch', '--filter=blob:none',
                          f'--separate-git-dir={git_dir}',
-                         f'{HOST}/{user}/{target_repo.repo_name}.git', tmpdir])
+                         _fork_git_url(user, target_repo), tmpdir])
                 cli.progress('Configuring local git and sparse checkout...')
                 git(['remote', 'add', '-t', MAIN_BRANCH, 'upstream', target_repo.base_repo_url])
                 git(['config', 'advice.updateSparsePath', 'false'])
